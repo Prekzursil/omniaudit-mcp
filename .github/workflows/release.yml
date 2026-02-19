@@ -1,0 +1,43 @@
+name: release-validation
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "smoke/**"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv pip install --system -e '.[test]'
+
+      - name: Validate release tag format
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            exit 0
+          fi
+          if [[ "${tag}" =~ ^smoke/v[0-9]{8}-[0-9]{6}-hardening-pass2$ ]]; then
+            exit 0
+          fi
+          echo "Unsupported tag format: ${tag}"
+          exit 1
+
+      - name: Validate release-related tests
+        run: |
+          TMPDIR=/tmp TEMP=/tmp TMP=/tmp pytest -q -s \
+            tests/unit/test_releasebutler_hardening.py \
+            tests/unit/test_releasebutler_wave1.py

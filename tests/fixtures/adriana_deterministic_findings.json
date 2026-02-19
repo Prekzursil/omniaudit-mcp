@@ -1,0 +1,29 @@
+{
+  "findings": [
+    {
+      "severity": "s2",
+      "category": "seo",
+      "title": "Missing canonical link",
+      "evidence": [
+        {
+          "source_type": "artifact",
+          "path": "seo-snapshot.json",
+          "line": 22
+        }
+      ],
+      "suggested_fix": "Add canonical link tag in route template"
+    },
+    {
+      "severity": "s3",
+      "category": "ux",
+      "title": "Nested scrollbar in checkout",
+      "evidence": [
+        {
+          "source_type": "screenshot",
+          "path": "screenshots/checkout.png"
+        }
+      ],
+      "suggested_fix": "Remove nested container overflow"
+    }
+  ]
+}

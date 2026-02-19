@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omniaudit-mcp"
+version = "0.1.0"
+description = "OmniAudit MCP server with AuditLens, SiteLint, and Release Butler"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116.0",
+  "uvicorn[standard]>=0.35.0",
+  "pydantic>=2.11.0",
+  "pydantic-settings>=2.10.0",
+  "sqlalchemy>=2.0.43",
+  "psycopg[binary]>=3.2.9",
+  "alembic>=1.16.0",
+  "cryptography>=45.0.0",
+  "PyJWT>=2.10.1",
+  "tenacity>=9.0.0",
+  "httpx>=0.28.0",
+  "celery>=5.5.0",
+  "redis>=6.2.0",
+  "boto3>=1.40.0",
+  "prometheus-client>=0.22.1",
+  "opentelemetry-api>=1.38.0",
+  "opentelemetry-sdk>=1.38.0",
+  "opentelemetry-exporter-otlp>=1.38.0",
+  "opentelemetry-instrumentation-fastapi>=0.59b0",
+  "opentelemetry-instrumentation-httpx>=0.59b0",
+  "python-multipart>=0.0.20",
+  "aiofiles>=24.1.0",
+  "jinja2>=3.1.6",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.4.0",
+  "pytest-asyncio>=1.1.0",
+  "freezegun>=1.5.5",
+]
+sitelint = [
+  "playwright>=1.55.0",
+]
+
+dev = [
+  "ruff>=0.12.0",
+  "mypy>=1.17.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["packages"]
+
+[tool.pytest.ini_options]
+pythonpath = ["packages", "apps"]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

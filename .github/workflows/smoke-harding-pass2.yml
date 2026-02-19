@@ -1,0 +1,54 @@
+name: smoke-hardening-pass2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      SMOKE_REPO: ${{ github.repository }}
+      OMNIAUDIT_MCP_URL: http://localhost:8080/mcp
+      OMNIAUDIT_METRICS_URL: http://localhost:8080/metrics
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv pip install --system -e '.[test]'
+
+      - name: Prepare env file
+        run: |
+          cp .env.example .env
+          if [ -n "${{ secrets.GH_PAT }}" ]; then
+            sed -i "s|^GITHUB_PAT=.*|GITHUB_PAT=${{ secrets.GH_PAT }}|" .env
+          fi
+          sed -i "s|^REPO_WRITE_ALLOWLIST=.*|REPO_WRITE_ALLOWLIST=${{ github.repository }}|" .env
+          sed -i "s|^OBJECT_STORE_BACKEND=.*|OBJECT_STORE_BACKEND=local|" .env
+
+      - name: Bootstrap
+        run: ./scripts/bootstrap.sh
+
+      - name: Start compose stack
+        run: docker compose up -d --build
+
+      - name: Run smoke script
+        run: ./scripts/smoke_hardening_pass2.sh
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-hardening-pass2-artifacts
+          path: artifacts/smoke
