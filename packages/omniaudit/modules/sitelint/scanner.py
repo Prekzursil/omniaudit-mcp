@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import fnmatch
+import inspect
 import json
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +46,37 @@ async def _capture_screenshot(url: str, output_file: Path, auth_context: dict[st
         await context.close()
         await browser.close()
     return str(output_file)
+
+
+def _capture_screenshot_sync(url: str, output_file: Path, auth_context: dict[str, Any] | None = None) -> str | None:
+    maybe_awaitable = _capture_screenshot(url, output_file, auth_context=auth_context)
+    if not inspect.isawaitable(maybe_awaitable):
+        return maybe_awaitable  # type: ignore[return-value]
+
+    try:
+        asyncio.get_running_loop()
+        loop_running = True
+    except RuntimeError:
+        loop_running = False
+
+    if not loop_running:
+        return asyncio.run(maybe_awaitable)
+
+    result: dict[str, str | None] = {"value": None}
+    failure: dict[str, Exception] = {}
+
+    def _runner() -> None:
+        try:
+            result["value"] = asyncio.run(maybe_awaitable)
+        except Exception as exc:
+            failure["error"] = exc
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+    if failure:
+        return None
+    return result["value"]
 
 
 def _run_lighthouse(url: str, report_dir: Path) -> dict[str, Any] | None:
@@ -239,7 +272,7 @@ def run_sitelint_scan(
 
         title = _extract_title(response.text)
         screenshot_path = report_dir / f"page-{idx + 1}.png"
-        screenshot_ref = asyncio.run(_capture_screenshot(page_url, screenshot_path, auth_context=auth_context))
+        screenshot_ref = _capture_screenshot_sync(page_url, screenshot_path, auth_context=auth_context)
         if screenshot_ref:
             screenshots.append(screenshot_ref)
 
