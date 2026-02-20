@@ -187,6 +187,7 @@ if [[ "${SMOKE_PREFLIGHT_ONLY}" == "true" ]]; then
 fi
 
 cp "${ENV_FILE}" "${ENV_BACKUP}"
+# shellcheck disable=SC2317
 restore_env() {
   if [[ -f "${ENV_BACKUP}" ]]; then
     cp "${ENV_BACKUP}" "${ENV_FILE}"
