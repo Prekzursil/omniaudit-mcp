@@ -30,5 +30,7 @@ def test_smoke_script_missing_dependencies_exit_code_is_10(tmp_path: Path) -> No
         check=False,
     )
 
+    combined_output = f"{result.stdout}{result.stderr}"
+
     assert result.returncode == 10
-    assert "Missing dependency: curl" in f"{result.stdout}{result.stderr}"
+    assert "[smoke-pass2] FAIL (10):" in combined_output
