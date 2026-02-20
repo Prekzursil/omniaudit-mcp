@@ -3,6 +3,7 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     PYTHONPATH=/app/packages:/app/apps:/app/services
 
 WORKDIR /app
@@ -12,6 +13,10 @@ COPY packages /app/packages
 COPY apps /app/apps
 COPY services /app/services
 
-RUN python -m pip install --upgrade pip && python -m pip install .
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --upgrade pip \
+    && python -m pip install .
 
 CMD ["celery", "-A", "worker.tasks:celery_app", "worker", "--loglevel=INFO"]

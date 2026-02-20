@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import subprocess
 import time
@@ -18,30 +17,30 @@ class SiteLintProfile:
     viewport_set: str
 
 
-async def _capture_screenshot(url: str, output_file: Path, auth_context: dict[str, Any] | None = None) -> str | None:
+def _capture_screenshot(url: str, output_file: Path, auth_context: dict[str, Any] | None = None) -> str | None:
     try:
-        from playwright.async_api import async_playwright
+        from playwright.sync_api import sync_playwright
     except Exception:
         return None
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        context = await browser.new_context(viewport={"width": 1280, "height": 720})
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context(viewport={"width": 1280, "height": 720})
         if auth_context and isinstance(auth_context.get("cookies"), list):
             try:
-                await context.add_cookies(auth_context["cookies"])
+                context.add_cookies(auth_context["cookies"])
             except Exception:
                 pass
-        page = await context.new_page()
+        page = context.new_page()
         if auth_context and isinstance(auth_context.get("headers"), dict):
             try:
-                await page.set_extra_http_headers(auth_context["headers"])
+                page.set_extra_http_headers(auth_context["headers"])
             except Exception:
                 pass
-        await page.goto(url, wait_until="networkidle", timeout=45000)
-        await page.screenshot(path=str(output_file), full_page=True)
-        await context.close()
-        await browser.close()
+        page.goto(url, wait_until="networkidle", timeout=45000)
+        page.screenshot(path=str(output_file), full_page=True)
+        context.close()
+        browser.close()
     return str(output_file)
 
 
@@ -173,7 +172,7 @@ def run_sitelint_scan(
 
         title = _extract_title(response.text)
         screenshot_path = report_dir / f"page-{idx + 1}.png"
-        screenshot_ref = asyncio.run(_capture_screenshot(page_url, screenshot_path, auth_context=auth_context))
+        screenshot_ref = _capture_screenshot(page_url, screenshot_path, auth_context=auth_context)
         if screenshot_ref:
             screenshots.append(screenshot_ref)
 

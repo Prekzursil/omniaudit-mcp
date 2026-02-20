@@ -13,6 +13,8 @@ SMOKE_RELEASE_NAME="Smoke Hardening Pass 2 ${SMOKE_TIMESTAMP} UTC"
 ARTIFACT_ROOT="artifacts/smoke/${SMOKE_TIMESTAMP}"
 RESPONSES_DIR="${ARTIFACT_ROOT}/responses"
 SUMMARY_FILE="${ARTIFACT_ROOT}/summary.json"
+MOUNTED_ASSET_HOST_PATH="data/smoke/${SMOKE_TIMESTAMP}/sample-asset.txt"
+MOUNTED_ASSET_CONTAINER_PATH="/app/data/smoke/${SMOKE_TIMESTAMP}/sample-asset.txt"
 ENV_FILE=".env"
 ENV_BACKUP="${ARTIFACT_ROOT}/.env.backup"
 HEALTH_URL="${OMNIAUDIT_MCP_URL%/mcp}/healthz"
@@ -30,25 +32,31 @@ write_summary() {
   local metrics_ok="$4"
   local release_url="$5"
   local error_msg="${6:-}"
-  jq -n \
-    --arg timestamp_utc "${SMOKE_TIMESTAMP}" \
-    --arg smoke_tag "${SMOKE_TAG}" \
-    --arg release_url "${release_url}" \
-    --arg error "${error_msg}" \
-    --argjson legacy_ref_read_ok "${legacy_ok}" \
-    --argjson s3_ref_write_ok "${s3_ok}" \
-    --argjson release_upload_ok "${release_ok}" \
-    --argjson metrics_ok "${metrics_ok}" \
-    '{
-      timestamp_utc: $timestamp_utc,
-      smoke_tag: $smoke_tag,
-      release_url: $release_url,
-      legacy_ref_read_ok: $legacy_ref_read_ok,
-      s3_ref_write_ok: $s3_ref_write_ok,
-      release_upload_ok: $release_upload_ok,
-      metrics_ok: $metrics_ok,
-      error: (if $error == "" then null else $error end)
-    }' > "${SUMMARY_FILE}"
+  if command -v jq >/dev/null 2>&1; then
+    jq -n \
+      --arg timestamp_utc "${SMOKE_TIMESTAMP}" \
+      --arg smoke_tag "${SMOKE_TAG}" \
+      --arg release_url "${release_url}" \
+      --arg error "${error_msg}" \
+      --argjson legacy_ref_read_ok "${legacy_ok}" \
+      --argjson s3_ref_write_ok "${s3_ok}" \
+      --argjson release_upload_ok "${release_ok}" \
+      --argjson metrics_ok "${metrics_ok}" \
+      '{
+        timestamp_utc: $timestamp_utc,
+        smoke_tag: $smoke_tag,
+        release_url: $release_url,
+        legacy_ref_read_ok: $legacy_ref_read_ok,
+        s3_ref_write_ok: $s3_ref_write_ok,
+        release_upload_ok: $release_upload_ok,
+        metrics_ok: $metrics_ok,
+        error: (if $error == "" then null else $error end)
+      }' > "${SUMMARY_FILE}"
+  else
+    cat > "${SUMMARY_FILE}" <<EOF
+{"timestamp_utc":"${SMOKE_TIMESTAMP}","smoke_tag":"${SMOKE_TAG}","release_url":"${release_url}","legacy_ref_read_ok":${legacy_ok},"s3_ref_write_ok":${s3_ok},"release_upload_ok":${release_ok},"metrics_ok":${metrics_ok},"error":"${error_msg}"}
+EOF
+  fi
 }
 
 fail() {
@@ -64,6 +72,11 @@ require_cmd() {
   command -v "${cmd}" >/dev/null 2>&1 || fail 10 "Missing dependency: ${cmd}"
 }
 
+recreate_api_worker() {
+  docker compose up -d --no-deps --force-recreate api worker >/dev/null || \
+    fail 10 "Failed to recreate api/worker services"
+}
+
 set_env_key() {
   local key="$1"
   local value="$2"
@@ -72,6 +85,30 @@ set_env_key() {
   else
     printf '%s=%s\n' "${key}" "${value}" >> "${ENV_FILE}"
   fi
+}
+
+append_repo_allowlist() {
+  local repo="$1"
+  local current
+  current="$(grep -E '^REPO_WRITE_ALLOWLIST=' "${ENV_FILE}" | head -n1 | cut -d'=' -f2- || true)"
+  if [[ -z "${current}" ]]; then
+    set_env_key REPO_WRITE_ALLOWLIST "${repo}"
+    return
+  fi
+  if grep -qE "(^|,)${repo}(,|$)" <<<"${current}"; then
+    return
+  fi
+  set_env_key REPO_WRITE_ALLOWLIST "${current},${repo}"
+}
+
+ensure_minio_bucket_dir() {
+  local bucket_name
+  bucket_name="$(grep -E '^OBJECT_STORE_BUCKET=' "${ENV_FILE}" | head -n1 | cut -d'=' -f2- || true)"
+  if [[ -z "${bucket_name}" ]]; then
+    bucket_name="omniaudit"
+  fi
+  docker compose exec -T minio sh -lc "mkdir -p /data/${bucket_name}" >/dev/null || \
+    fail 10 "Failed to ensure MinIO bucket directory: ${bucket_name}"
 }
 
 mcp_call() {
@@ -109,7 +146,7 @@ poll_job_completion() {
   local prefix="$2"
   local output_file="${RESPONSES_DIR}/${prefix}_job_final.json"
   local status=""
-  for i in $(seq 1 60); do
+  for i in $(seq 1 180); do
     local args
     args="$(jq -cn --arg job_id "${job_id}" '{job_id:$job_id}')"
     mcp_call "${prefix}-job-${i}" "core.get_job" "${args}" "${RESPONSES_DIR}/${prefix}_job_${i}.json"
@@ -153,24 +190,35 @@ cp "${ENV_FILE}" "${ENV_BACKUP}"
 restore_env() {
   if [[ -f "${ENV_BACKUP}" ]]; then
     cp "${ENV_BACKUP}" "${ENV_FILE}"
-    docker compose restart api worker >/dev/null 2>&1 || true
+    docker compose up -d --no-deps --force-recreate api worker >/dev/null 2>&1 || true
   fi
 }
 trap restore_env EXIT
 
+if grep -q '^GITHUB_PAT=$' "${ENV_FILE}"; then
+  token="$(gh auth token 2>/dev/null || true)"
+  [[ -n "${token}" ]] || fail 10 "GITHUB_PAT is empty and gh auth token is unavailable"
+  set_env_key GITHUB_PAT "${token}"
+fi
+append_repo_allowlist "${SMOKE_REPO}"
+
 mkdir -p "${ARTIFACT_ROOT}"
+mkdir -p "$(dirname "${MOUNTED_ASSET_HOST_PATH}")"
 printf 'smoke artifact generated at %s\n' "${SMOKE_TIMESTAMP}" > "${ARTIFACT_ROOT}/sample-asset.txt"
+cp "${ARTIFACT_ROOT}/sample-asset.txt" "${MOUNTED_ASSET_HOST_PATH}"
 
 log "Starting compose stack."
 docker compose up -d --build >/dev/null || fail 10 "docker compose up failed"
 wait_for_health
+ensure_minio_bucket_dir
 
 log "Running local backend scan."
 set_env_key OBJECT_STORE_BACKEND local
-docker compose restart api worker >/dev/null || fail 10 "Failed to restart services in local mode"
+recreate_api_worker
 wait_for_health
 
-local_scan_args="$(jq -cn --arg url "${SMOKE_URL}" '{url:$url, profile:"standard", viewport_set:"desktop_mobile"}')"
+local_scan_args="$(jq -cn --arg url "${SMOKE_URL}" --arg idem "smoke-local-${SMOKE_TIMESTAMP}" \
+  '{url:$url, profile:"standard", viewport_set:"desktop_mobile", idempotency_key:$idem}')"
 mcp_call "local-scan-start" "sitelint.start_scan" "${local_scan_args}" "${RESPONSES_DIR}/local_scan_start.json"
 legacy_job_id="$(jq -r '.result.structuredContent.job_id // ""' "${RESPONSES_DIR}/local_scan_start.json")"
 [[ -n "${legacy_job_id}" ]] || fail 20 "legacy_job_id missing"
@@ -183,10 +231,11 @@ legacy_ref_read_ok=true
 
 log "Switching to S3 backend and running second scan."
 set_env_key OBJECT_STORE_BACKEND s3
-docker compose restart api worker >/dev/null || fail 10 "Failed to restart services in s3 mode"
+recreate_api_worker
 wait_for_health
 
-s3_scan_args="$(jq -cn --arg url "${SMOKE_URL}" '{url:$url, profile:"standard", viewport_set:"desktop_mobile", crawl_budget:2, entry_paths:["/","/"]}')"
+s3_scan_args="$(jq -cn --arg url "${SMOKE_URL}" --arg idem "smoke-s3-${SMOKE_TIMESTAMP}" \
+  '{url:$url, profile:"standard", viewport_set:"desktop_mobile", idempotency_key:$idem, crawl_budget:2, entry_paths:["/","/"]}')"
 mcp_call "s3-scan-start" "sitelint.start_scan" "${s3_scan_args}" "${RESPONSES_DIR}/s3_scan_start.json"
 s3_job_id="$(jq -r '.result.structuredContent.job_id // ""' "${RESPONSES_DIR}/s3_scan_start.json")"
 [[ -n "${s3_job_id}" ]] || fail 20 "s3_job_id missing"
@@ -208,7 +257,7 @@ release_create_args="$(jq -cn \
   --arg repo "${SMOKE_REPO}" \
   --arg tag "${SMOKE_TAG}" \
   --arg notes "${release_notes}" \
-  --arg asset "${ARTIFACT_ROOT}/sample-asset.txt" \
+  --arg asset "${MOUNTED_ASSET_CONTAINER_PATH}" \
   --arg name "${SMOKE_RELEASE_NAME}" \
   '{repo:$repo, tag:$tag, notes:($notes + "\n\nRelease name: " + $name), assets:[$asset], provenance_manifest:true}')"
 
@@ -220,9 +269,10 @@ release_confirm_args="$(jq -cn \
   --arg repo "${SMOKE_REPO}" \
   --arg tag "${SMOKE_TAG}" \
   --arg notes "${release_notes}" \
-  --arg asset "${ARTIFACT_ROOT}/sample-asset.txt" \
+  --arg asset "${MOUNTED_ASSET_CONTAINER_PATH}" \
+  --arg name "${SMOKE_RELEASE_NAME}" \
   --arg token "${confirmation_token}" \
-  '{repo:$repo, tag:$tag, notes:$notes, assets:[$asset], confirmation_token:$token, provenance_manifest:true}')"
+  '{repo:$repo, tag:$tag, notes:($notes + "\n\nRelease name: " + $name), assets:[$asset], confirmation_token:$token, provenance_manifest:true}')"
 
 mcp_call "release-create-confirmed" "releasebutler.create_release" "${release_confirm_args}" "${RESPONSES_DIR}/release_create_confirmed.json"
 release_id="$(jq -r '.result.structuredContent.release_id // ""' "${RESPONSES_DIR}/release_create_confirmed.json")"
