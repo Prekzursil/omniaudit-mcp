@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import subprocess
 import time
@@ -143,6 +144,54 @@ def _build_scan_urls(base_url: str, crawl_budget: int | None, entry_paths: list[
     return urls[:budget]
 
 
+def _path_depth(path_or_url: str) -> int:
+    parsed = urlparse(path_or_url)
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    return len(segments)
+
+
+def _matches_patterns(path_or_url: str, patterns: list[str] | None) -> bool:
+    if not patterns:
+        return True
+    parsed = urlparse(path_or_url)
+    value = parsed.path or "/"
+    return any(fnmatch.fnmatch(value, pattern) for pattern in patterns)
+
+
+def _build_scan_urls_v2(
+    base_url: str,
+    crawl_budget: int | None,
+    entry_paths: list[str] | None,
+    *,
+    max_depth: int | None = None,
+    crawl_strategy: str = "bfs",
+    include_patterns: list[str] | None = None,
+    exclude_patterns: list[str] | None = None,
+) -> list[str]:
+    urls = _build_scan_urls(base_url, crawl_budget=crawl_budget, entry_paths=entry_paths)
+
+    filtered: list[str] = []
+    for page_url in urls:
+        if max_depth is not None and _path_depth(page_url) > max(0, int(max_depth)):
+            continue
+        if not _matches_patterns(page_url, include_patterns):
+            continue
+        if exclude_patterns and _matches_patterns(page_url, exclude_patterns):
+            continue
+        filtered.append(page_url)
+
+    if not filtered:
+        filtered = [urljoin(f"{base_url.rstrip('/')}/", "")]
+
+    strategy = (crawl_strategy or "bfs").strip().lower()
+    if strategy == "dfs":
+        filtered.sort(key=lambda item: (-_path_depth(item), item))
+    else:
+        filtered.sort(key=lambda item: (_path_depth(item), item))
+
+    return filtered
+
+
 def run_sitelint_scan(
     url: str,
     profile: str,
@@ -152,6 +201,13 @@ def run_sitelint_scan(
     crawl_budget: int | None = None,
     entry_paths: list[str] | None = None,
     auth_context: dict[str, Any] | None = None,
+    max_depth: int | None = None,
+    crawl_strategy: str = "bfs",
+    include_patterns: list[str] | None = None,
+    exclude_patterns: list[str] | None = None,
+    capture_console: bool = False,
+    capture_network: bool = False,
+    auth_journey_id: str | None = None,
 ) -> dict[str, Any]:
     report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -159,11 +215,21 @@ def run_sitelint_scan(
     if auth_context and isinstance(auth_context.get("headers"), dict):
         headers = {str(k): str(v) for k, v in auth_context["headers"].items()}
 
-    scan_urls = _build_scan_urls(url, crawl_budget=crawl_budget, entry_paths=entry_paths)
+    scan_urls = _build_scan_urls_v2(
+        url,
+        crawl_budget=crawl_budget,
+        entry_paths=entry_paths,
+        max_depth=max_depth,
+        crawl_strategy=crawl_strategy,
+        include_patterns=include_patterns,
+        exclude_patterns=exclude_patterns,
+    )
     pages: list[dict[str, Any]] = []
     screenshots: list[str] = []
     findings: list[dict[str, Any]] = []
     response_times: list[int] = []
+    console_snapshots: list[dict[str, Any]] = []
+    network_snapshots: list[dict[str, Any]] = []
 
     for idx, page_url in enumerate(scan_urls):
         started = time.perf_counter()
@@ -203,6 +269,27 @@ def run_sitelint_scan(
                 }
             )
 
+        page_console: list[dict[str, Any]] = []
+        if capture_console:
+            if not title:
+                page_console.append({"level": "warn", "message": "Missing title tag", "url": page_url})
+            if response.status_code >= 400:
+                page_console.append(
+                    {"level": "error", "message": f"HTTP {response.status_code} response", "url": page_url}
+                )
+
+        page_network: list[dict[str, Any]] = []
+        if capture_network:
+            page_network.append(
+                {
+                    "url": page_url,
+                    "method": "GET",
+                    "status_code": response.status_code,
+                    "duration_ms": duration_ms,
+                    "content_length": len(response.content),
+                }
+            )
+
         pages.append(
             {
                 "url": page_url,
@@ -212,9 +299,15 @@ def run_sitelint_scan(
                 "title": title,
                 "screenshot": screenshot_ref,
                 "findings": page_findings,
+                "console": page_console,
+                "network": page_network,
             }
         )
         findings.extend(page_findings)
+        if page_console:
+            console_snapshots.append({"url": page_url, "events": page_console})
+        if page_network:
+            network_snapshots.append({"url": page_url, "events": page_network})
 
     lighthouse = _run_lighthouse(url, report_dir)
     axe = _run_axe(url, report_dir)
@@ -244,11 +337,25 @@ def run_sitelint_scan(
             }
         )
 
+    crawl_graph = {
+        "strategy": (crawl_strategy or "bfs").strip().lower(),
+        "max_depth": max_depth,
+        "nodes": [{"id": page_url, "depth": _path_depth(page_url)} for page_url in scan_urls],
+        "edges": [{"from": url, "to": page_url} for page_url in scan_urls if page_url != url],
+    }
+
     report: dict[str, Any] = {
         "url": url,
         "host": _host_from_url(url),
         "profile": profile,
         "viewport_set": viewport_set,
+        "auth_journey_id": auth_journey_id,
+        "crawl_strategy": (crawl_strategy or "bfs").strip().lower(),
+        "max_depth": max_depth,
+        "include_patterns": include_patterns or [],
+        "exclude_patterns": exclude_patterns or [],
+        "capture_console": capture_console,
+        "capture_network": capture_network,
         "crawl_budget": len(scan_urls),
         "entry_paths": _normalize_entry_paths(entry_paths),
         "pages": pages,
@@ -270,8 +377,11 @@ def run_sitelint_scan(
             ],
             "lighthouse": lighthouse,
             "axe": axe,
+            "console_snapshots": console_snapshots,
+            "network_snapshots": network_snapshots,
             "notes": "Lighthouse and axe-core run when node toolchain is installed; otherwise they are null.",
         },
+        "crawl_graph": crawl_graph,
         "findings": findings,
     }
     return report

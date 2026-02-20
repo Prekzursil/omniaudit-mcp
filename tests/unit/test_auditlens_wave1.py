@@ -52,12 +52,18 @@ def test_parse_findings_supports_parser_profile_and_dedupe(tmp_path: Path) -> No
         ruleset_version="v2",
         parser_profile="auto",
         dedupe_strategy="by_title",
+        parser_profile_version="2026.02",
+        confidence_profile="strict",
+        merge_window=2,
     )
 
     assert parsed["count"] >= 1
     assert all("confidence" in finding for finding in parsed["findings"])
     titles = [finding["title"] for finding in parsed["findings"]]
     assert len(titles) == len(set(titles))
+    assert parsed["calibration_profile_used"] == "strict"
+    assert isinstance(parsed["clusters"], list)
+    assert isinstance(parsed["owner_suggestions"], list)
 
 
 def test_create_issue_supports_assignees_milestone_and_template(tmp_path: Path) -> None:
@@ -89,3 +95,25 @@ def test_propose_patch_returns_file_anchored_diff() -> None:
     assert "diff --git" in result["diff_preview"]
     assert "target_file" in result
     assert result["target_file"].startswith("src/")
+
+
+def test_create_issue_supports_wave2_dry_run_metadata(tmp_path: Path) -> None:
+    github = FakeGitHubAudit()
+    store = LocalObjectStore(tmp_path / "objects")
+    service = AuditLensService(github=github, object_store=store)
+
+    result = service.create_issue(
+        repo="Prekzursil/omniaudit-mcp",
+        title="Audit finding",
+        body="Base body",
+        labels=["audit:ux"],
+        project_id="ops-board",
+        issue_type="task",
+        dedupe_key="audit-123",
+        dry_run=True,
+    )
+
+    assert result["dry_run"] is True
+    assert result["issue_number"] is None
+    assert result["project_id"] == "ops-board"
+    assert github.issue_payload is None

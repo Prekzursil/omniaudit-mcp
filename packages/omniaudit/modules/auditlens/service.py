@@ -55,25 +55,42 @@ class AuditLensService:
         ruleset_version: str = "v1",
         parser_profile: str = "auto",
         dedupe_strategy: str = "by_id",
+        parser_profile_version: str | None = None,
+        confidence_profile: str | None = None,
+        merge_window: int | None = None,
+        ownership_map_ref: str | None = None,
     ) -> dict[str, Any]:
         document = json.loads(self.object_store.read_text(evidence_ref))
         files: dict[str, str] = document.get("files", {})
 
         findings = self._findings_from_files(files, parser_profile=parser_profile)
         findings = self._dedupe_findings(findings, dedupe_strategy=dedupe_strategy)
-        findings = [self._calibrate_confidence(item) for item in findings]
+        findings = self._merge_findings_window(findings, merge_window=merge_window)
+        calibration_profile = confidence_profile or "severity-bump-v1"
+        findings = [self._calibrate_confidence(item, profile=calibration_profile) for item in findings]
+        clusters = self._cluster_findings(findings)
+        owner_suggestions = self._owner_suggestions(findings, ownership_map_ref=ownership_map_ref)
 
         findings_doc = {
             "ruleset_version": ruleset_version,
             "parser_profile": parser_profile,
+            "parser_profile_version": parser_profile_version,
             "dedupe_strategy": dedupe_strategy,
+            "merge_window": merge_window,
+            "confidence_profile": calibration_profile,
+            "ownership_map_ref": ownership_map_ref,
             "findings": findings,
+            "clusters": clusters,
+            "owner_suggestions": owner_suggestions,
             "source_evidence_ref": evidence_ref,
         }
         findings_ref = self.object_store.put_json_immutable(findings_doc)
         return {
             "findings_ref": findings_ref,
             "findings": findings,
+            "clusters": clusters,
+            "owner_suggestions": owner_suggestions,
+            "calibration_profile_used": calibration_profile,
             "count": len(findings),
         }
 
@@ -87,12 +104,41 @@ class AuditLensService:
         assignees: list[str] | None = None,
         milestone: int | None = None,
         template_id: str | None = None,
+        project_id: str | None = None,
+        issue_type: str | None = None,
+        dedupe_key: str | None = None,
+        dry_run: bool = False,
     ) -> dict[str, Any]:
         final_body = body
         if template_id:
             final_body = f"Template: {template_id}\n\n{final_body}"
         if finding_ids:
             final_body += "\n\nLinked findings:\n" + "\n".join(f"- {fid}" for fid in finding_ids)
+        metadata: list[str] = []
+        if project_id:
+            metadata.append(f"project_id={project_id}")
+        if issue_type:
+            metadata.append(f"issue_type={issue_type}")
+        if dedupe_key:
+            metadata.append(f"dedupe_key={dedupe_key}")
+        if metadata:
+            final_body += "\n\nMetadata:\n" + "\n".join(f"- {item}" for item in metadata)
+
+        if dry_run:
+            return {
+                "repo": repo,
+                "issue_url": None,
+                "issue_number": None,
+                "dry_run": True,
+                "title": title,
+                "labels": labels,
+                "assignees": assignees or [],
+                "milestone": milestone,
+                "project_id": project_id,
+                "issue_type": issue_type,
+                "dedupe_key": dedupe_key,
+            }
+
         issue = self.github.create_issue(
             repo=repo,
             title=title,
@@ -105,6 +151,10 @@ class AuditLensService:
             "issue_url": issue.get("html_url"),
             "issue_number": issue.get("number"),
             "repo": repo,
+            "dry_run": False,
+            "project_id": project_id,
+            "issue_type": issue_type,
+            "dedupe_key": dedupe_key,
         }
 
     @staticmethod
@@ -208,10 +258,78 @@ class AuditLensService:
         return output
 
     @staticmethod
-    def _calibrate_confidence(finding: dict[str, Any]) -> dict[str, Any]:
+    def _calibrate_confidence(finding: dict[str, Any], profile: str = "severity-bump-v1") -> dict[str, Any]:
         calibrated = dict(finding)
         current = float(calibrated.get("confidence", 0.8))
         severity = str(calibrated.get("severity", "s3")).lower()
-        bump = {"s1": 0.12, "s2": 0.08, "s3": 0.04}.get(severity, 0.02)
+        selected = (profile or "severity-bump-v1").strip().lower()
+        bump_table = {
+            "severity-bump-v1": {"s1": 0.12, "s2": 0.08, "s3": 0.04},
+            "strict": {"s1": 0.08, "s2": 0.05, "s3": 0.02},
+            "aggressive": {"s1": 0.18, "s2": 0.12, "s3": 0.06},
+        }
+        bump = bump_table.get(selected, bump_table["severity-bump-v1"]).get(severity, 0.02)
         calibrated["confidence"] = min(1.0, round(current + bump, 4))
         return calibrated
+
+    @staticmethod
+    def _merge_findings_window(findings: list[dict[str, Any]], merge_window: int | None = None) -> list[dict[str, Any]]:
+        if merge_window is None or merge_window <= 1:
+            return findings
+        merged: list[dict[str, Any]] = []
+        last_seen: dict[str, int] = {}
+        for idx, finding in enumerate(findings):
+            key = f"{finding.get('category', 'general')}::{finding.get('title', '')}"
+            previous = last_seen.get(key)
+            if previous is not None and idx - previous <= merge_window:
+                continue
+            last_seen[key] = idx
+            merged.append(finding)
+        return merged
+
+    @staticmethod
+    def _cluster_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        grouped: dict[tuple[str, str], list[str]] = {}
+        for finding in findings:
+            category = str(finding.get("category", "general"))
+            severity = str(finding.get("severity", "s3"))
+            key = (category, severity)
+            grouped.setdefault(key, []).append(str(finding.get("finding_id", "unknown")))
+        clusters = [
+            {"cluster_id": f"{category}:{severity}", "category": category, "severity": severity, "finding_ids": ids}
+            for (category, severity), ids in grouped.items()
+        ]
+        return sorted(clusters, key=lambda item: item["cluster_id"])
+
+    def _owner_suggestions(self, findings: list[dict[str, Any]], ownership_map_ref: str | None = None) -> list[dict[str, Any]]:
+        ownership_rules: list[dict[str, str]] = []
+        if ownership_map_ref:
+            try:
+                ownership_doc = json.loads(self.object_store.read_text(ownership_map_ref))
+                raw_rules = ownership_doc.get("rules", [])
+                if isinstance(raw_rules, list):
+                    for entry in raw_rules:
+                        if isinstance(entry, dict):
+                            pattern = str(entry.get("pattern", "")).strip()
+                            owner = str(entry.get("owner", "")).strip()
+                            if pattern and owner:
+                                ownership_rules.append({"pattern": pattern, "owner": owner})
+            except Exception:
+                ownership_rules = []
+
+        owner_counts: dict[str, int] = {}
+        for finding in findings:
+            candidate_owner = "unowned"
+            evidence_refs = finding.get("evidence_refs", [])
+            for evidence in evidence_refs:
+                path = str(evidence.get("path_or_url", ""))
+                for rule in ownership_rules:
+                    if rule["pattern"] in path:
+                        candidate_owner = rule["owner"]
+                        break
+                if candidate_owner != "unowned":
+                    break
+            owner_counts[candidate_owner] = owner_counts.get(candidate_owner, 0) + 1
+
+        ranked = sorted(owner_counts.items(), key=lambda item: (-item[1], item[0]))
+        return [{"owner": owner, "finding_count": count} for owner, count in ranked]

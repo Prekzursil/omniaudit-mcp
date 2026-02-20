@@ -144,6 +144,47 @@ def test_metrics_include_gate_denied_and_rate_limit_denials() -> None:
     assert 'bucket="scan"' in metrics.text
 
 
+def test_sitelint_start_scan_accepts_wave2_optional_args(monkeypatch) -> None:
+    captured = {}
+
+    def fake_start_scan(self, **kwargs):
+        captured.update(kwargs)
+        return {"job_id": "job_wave2", "module": "sitelint", "status": "queued", "progress": 0.0}
+
+    monkeypatch.setattr(type(__import__("mcp_server.main", fromlist=["runtime"]).runtime.sitelint), "start_scan", fake_start_scan)
+
+    client = TestClient(app)
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 14,
+            "method": "tools/call",
+            "params": {
+                "name": "sitelint.start_scan",
+                "arguments": {
+                    "url": "https://example.com",
+                    "profile": "standard",
+                    "viewport_set": "desktop_mobile",
+                    "max_depth": 2,
+                    "crawl_strategy": "dfs",
+                    "include_patterns": ["/", "/docs*"],
+                    "exclude_patterns": ["/admin*"],
+                    "capture_console": True,
+                    "capture_network": True,
+                    "auth_journey_id": "journey-1",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["max_depth"] == 2
+    assert captured["crawl_strategy"] == "dfs"
+    assert captured["capture_console"] is True
+    assert captured["auth_journey_id"] == "journey-1"
+
+
 def test_generate_notes_accepts_from_and_to_tags(monkeypatch) -> None:
     captured = {}
 
@@ -157,6 +198,10 @@ def test_generate_notes_accepts_from_and_to_tags(monkeypatch) -> None:
         fallback_window,
         group_by=None,
         include_pr_links=False,
+        template=None,
+        max_commits=None,
+        include_authors=False,
+        include_checks=False,
     ):
         captured.update(
             {
@@ -168,9 +213,17 @@ def test_generate_notes_accepts_from_and_to_tags(monkeypatch) -> None:
                 "fallback_window": fallback_window,
                 "group_by": group_by,
                 "include_pr_links": include_pr_links,
+                "template": template,
+                "max_commits": max_commits,
+                "include_authors": include_authors,
+                "include_checks": include_checks,
             }
         )
-        return {"notes": "ok", "range": {"from_tag": from_tag, "to_tag": to_tag, "fallback_used": False}}
+        return {
+            "notes": "ok",
+            "range": {"from_tag": from_tag, "to_tag": to_tag, "fallback_used": False},
+            "checks_summary": {"states": {"success": 1}},
+        }
 
     monkeypatch.setattr(type(__import__("mcp_server.main", fromlist=["runtime"]).runtime.releasebutler), "generate_notes", fake_generate_notes)
 
@@ -188,6 +241,10 @@ def test_generate_notes_accepts_from_and_to_tags(monkeypatch) -> None:
                     "from_tag": "v1.0.0",
                     "to_tag": "v2.0.0",
                     "fallback_window": 15,
+                    "template": "compact",
+                    "max_commits": 10,
+                    "include_authors": True,
+                    "include_checks": True,
                 },
             },
         },
@@ -196,6 +253,7 @@ def test_generate_notes_accepts_from_and_to_tags(monkeypatch) -> None:
     structured = response.json()["result"]["structuredContent"]
     assert structured["range"]["from_tag"] == "v1.0.0"
     assert captured["to_tag"] == "v2.0.0"
+    assert captured["include_checks"] is True
 
 
 def test_create_release_accepts_local_assets_and_returns_metadata(monkeypatch, tmp_path: Path) -> None:
@@ -211,6 +269,9 @@ def test_create_release_accepts_local_assets_and_returns_metadata(monkeypatch, t
         prerelease=False,
         dry_run=False,
         provenance_manifest=False,
+        channel=None,
+        retry_failed_assets=False,
+        publish_timeout_seconds=None,
     ):
         captured.update(
             {
@@ -222,6 +283,9 @@ def test_create_release_accepts_local_assets_and_returns_metadata(monkeypatch, t
                 "prerelease": prerelease,
                 "dry_run": dry_run,
                 "provenance_manifest": provenance_manifest,
+                "channel": channel,
+                "retry_failed_assets": retry_failed_assets,
+                "publish_timeout_seconds": publish_timeout_seconds,
             }
         )
         return {
@@ -239,6 +303,9 @@ def test_create_release_accepts_local_assets_and_returns_metadata(monkeypatch, t
                 }
             ],
             "failed_assets": [],
+            "upload_attempts": [{"asset_name": "artifact.zip", "attempt": 1, "status": "success"}],
+            "checks_summary": {"uploaded_assets": 1, "failed_assets": 0},
+            "provenance_ref": "local://provenance.json",
         }
 
     monkeypatch.setattr(
@@ -264,6 +331,9 @@ def test_create_release_accepts_local_assets_and_returns_metadata(monkeypatch, t
                     "tag": "v3.0.0",
                     "notes": "notes",
                     "assets": [str(asset)],
+                    "channel": "beta",
+                    "retry_failed_assets": True,
+                    "publish_timeout_seconds": 120,
                 },
             },
         },
@@ -286,6 +356,9 @@ def test_create_release_accepts_local_assets_and_returns_metadata(monkeypatch, t
                     "notes": "notes",
                     "assets": [str(asset)],
                     "confirmation_token": token,
+                    "channel": "beta",
+                    "retry_failed_assets": True,
+                    "publish_timeout_seconds": 120,
                 },
             },
         },
@@ -295,3 +368,5 @@ def test_create_release_accepts_local_assets_and_returns_metadata(monkeypatch, t
     assert structured["uploaded_assets"][0]["name"] == "artifact.zip"
     assert structured["failed_assets"] == []
     assert captured["assets"] == [str(asset)]
+    assert structured["upload_attempts"][0]["status"] == "success"
+    assert captured["channel"] == "beta"

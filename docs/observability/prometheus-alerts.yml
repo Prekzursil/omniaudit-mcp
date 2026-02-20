@@ -1,0 +1,23 @@
+groups:
+  - name: omniaudit-baseline
+    rules:
+      - alert: OmniAuditHighToolErrorRate
+        expr: |
+          sum(rate(omniaudit_tool_calls_total{status="error"}[5m]))
+          /
+          clamp_min(sum(rate(omniaudit_tool_calls_total[5m])), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OmniAudit tool error rate above 5%"
+          description: "Investigate recent failing tool calls and upstream dependency health."
+
+      - alert: OmniAuditWriteGateDenialsSpike
+        expr: sum(rate(omniaudit_write_gate_denied_total[10m])) > 2
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Write-gate denials are elevated"
+          description: "Expected for safety in some periods, but sustained spikes may indicate UX or policy issues."

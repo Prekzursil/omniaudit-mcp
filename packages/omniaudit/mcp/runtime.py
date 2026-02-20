@@ -165,7 +165,7 @@ def build_runtime() -> AppRuntime:
             dispatcher=dispatcher,
             credentials=credentials,
         ),
-        releasebutler=ReleaseButlerService(github=github),
+        releasebutler=ReleaseButlerService(github=github, object_store=object_store),
         jobs=jobs,
         receipts=receipts,
         audit_logger=audit_logger,
@@ -258,6 +258,10 @@ def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments:
             ruleset_version=args.get("ruleset_version", "v1"),
             parser_profile=args.get("parser_profile", "auto"),
             dedupe_strategy=args.get("dedupe_strategy", "by_id"),
+            parser_profile_version=args.get("parser_profile_version"),
+            confidence_profile=args.get("confidence_profile"),
+            merge_window=int(args["merge_window"]) if args.get("merge_window") is not None else None,
+            ownership_map_ref=args.get("ownership_map_ref"),
         )
         _log(runtime, request_id, name, arguments, result)
         return result
@@ -282,8 +286,12 @@ def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments:
             assignees=args.get("assignees"),
             milestone=int(args["milestone"]) if args.get("milestone") is not None else None,
             template_id=args.get("template_id"),
+            project_id=args.get("project_id"),
+            issue_type=args.get("issue_type"),
+            dedupe_key=args.get("dedupe_key"),
+            dry_run=bool(args.get("dry_run", False)),
         )
-        receipt = runtime.receipts.create_receipt(name, settings.operator_name, args, result)
+        receipt = runtime.receipts.create_receipt(name, settings.operator_name, args, result, request_id=request_id)
         merged = {**result, "receipt_id": receipt.receipt_id}
         _log(runtime, request_id, name, arguments, merged)
         return merged
@@ -308,6 +316,13 @@ def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments:
             entry_paths=args.get("entry_paths"),
             auth_profile_id=args.get("auth_profile_id"),
             baseline_scan_id=args.get("baseline_scan_id"),
+            max_depth=int(args["max_depth"]) if args.get("max_depth") is not None else None,
+            crawl_strategy=args.get("crawl_strategy"),
+            include_patterns=args.get("include_patterns"),
+            exclude_patterns=args.get("exclude_patterns"),
+            capture_console=bool(args.get("capture_console", False)),
+            capture_network=bool(args.get("capture_network", False)),
+            auth_journey_id=args.get("auth_journey_id"),
         )
         _log(runtime, request_id, name, arguments, result)
         return result
@@ -337,7 +352,7 @@ def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments:
             format_name=args.get("format", "json"),
             destination=args["destination"],
         )
-        receipt = runtime.receipts.create_receipt(name, settings.operator_name, args, result)
+        receipt = runtime.receipts.create_receipt(name, settings.operator_name, args, result, request_id=request_id)
         merged = {**result, "receipt_id": receipt.receipt_id}
         _log(runtime, request_id, name, arguments, merged)
         return merged
@@ -371,6 +386,10 @@ def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments:
             fallback_window=int(args["fallback_window"]) if args.get("fallback_window") is not None else None,
             group_by=args.get("group_by"),
             include_pr_links=bool(args.get("include_pr_links", False)),
+            template=args.get("template"),
+            max_commits=int(args["max_commits"]) if args.get("max_commits") is not None else None,
+            include_authors=bool(args.get("include_authors", False)),
+            include_checks=bool(args.get("include_checks", False)),
         )
         _log(runtime, request_id, name, arguments, result)
         return result
@@ -395,8 +414,13 @@ def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments:
             prerelease=bool(args.get("prerelease", False)),
             dry_run=bool(args.get("dry_run", False)),
             provenance_manifest=bool(args.get("provenance_manifest", False)),
+            channel=args.get("channel"),
+            retry_failed_assets=bool(args.get("retry_failed_assets", False)),
+            publish_timeout_seconds=int(args["publish_timeout_seconds"])
+            if args.get("publish_timeout_seconds") is not None
+            else None,
         )
-        receipt = runtime.receipts.create_receipt(name, settings.operator_name, args, result)
+        receipt = runtime.receipts.create_receipt(name, settings.operator_name, args, result, request_id=request_id)
         merged = {**result, "receipt_id": receipt.receipt_id}
         _log(runtime, request_id, name, arguments, merged)
         return merged

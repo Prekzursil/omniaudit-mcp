@@ -59,7 +59,14 @@ class FakeGitHubWave1:
             "upload_url": "https://uploads.example/releases/3/assets{?name,label}",
         }
 
-    def upload_release_asset(self, upload_url: str, file_path: str, asset_name: str, content_type: str | None = None) -> dict:
+    def upload_release_asset(
+        self,
+        upload_url: str,
+        file_path: str,
+        asset_name: str,
+        content_type: str | None = None,
+        timeout_seconds: int | None = None,
+    ) -> dict:
         self.uploaded.append({"upload_url": upload_url, "file_path": file_path, "asset_name": asset_name})
         return {
             "id": 7,
@@ -67,6 +74,9 @@ class FakeGitHubWave1:
             "size": Path(file_path).stat().st_size,
             "browser_download_url": f"https://example/download/{asset_name}",
         }
+
+    def get_commit_check_summary(self, repo: str, sha: str) -> dict:
+        return {"sha": sha, "state": "success", "total_count": 1}
 
 
 def test_generate_notes_supports_scope_grouping_and_pr_links() -> None:
@@ -79,11 +89,17 @@ def test_generate_notes_supports_scope_grouping_and_pr_links() -> None:
         to_tag="v2.0.0",
         group_by="scope",
         include_pr_links=True,
+        template="compact",
+        max_commits=2,
+        include_authors=True,
+        include_checks=True,
     )
 
-    assert "## By Scope" in result["notes"]
+    assert "## By Scope" in result["notes"] or "Commits: 2" in result["notes"]
     assert "(#42)" in result["notes"]
     assert result["range"]["fallback_used"] is False
+    assert result["max_commits"] == 2
+    assert result["checks_summary"]["states"]["success"] >= 1
 
 
 def test_create_release_dry_run_validates_assets_without_publish(tmp_path: Path) -> None:
@@ -124,11 +140,16 @@ def test_create_release_supports_draft_and_prerelease_flags(tmp_path: Path) -> N
         draft=True,
         prerelease=True,
         provenance_manifest=True,
+        channel="beta",
+        retry_failed_assets=True,
+        publish_timeout_seconds=120,
     )
 
     assert result["release_id"] == 3
     assert len(result["uploaded_assets"]) == 1
+    assert result["upload_attempts"][0]["status"] == "success"
     assert fake.created_release_payload is not None
     assert fake.created_release_payload["draft"] is True
     assert fake.created_release_payload["prerelease"] is True
     assert result["provenance"]["assets"][0]["name"] == "artifact.bin"
+    assert result["checks_summary"]["channel"] == "beta"

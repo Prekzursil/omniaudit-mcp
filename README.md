@@ -1,5 +1,11 @@
 # OmniAudit MCP
 
+[![ci](https://github.com/Prekzursil/omniaudit-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Prekzursil/omniaudit-mcp/actions/workflows/ci.yml)
+[![smoke-hardening-pass2](https://github.com/Prekzursil/omniaudit-mcp/actions/workflows/smoke-harding-pass2.yml/badge.svg)](https://github.com/Prekzursil/omniaudit-mcp/actions/workflows/smoke-harding-pass2.yml)
+[![codeql](https://github.com/Prekzursil/omniaudit-mcp/actions/workflows/codeql.yml/badge.svg)](https://github.com/Prekzursil/omniaudit-mcp/actions/workflows/codeql.yml)
+[![security-audit](https://github.com/Prekzursil/omniaudit-mcp/actions/workflows/security-audit.yml/badge.svg)](https://github.com/Prekzursil/omniaudit-mcp/actions/workflows/security-audit.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Single self-hosted MCP connector that ships three production modules:
 
 - `AuditLens` (`auditlens.*`): GitHub PR/run evidence triage and issue drafting.
@@ -243,6 +249,13 @@ Key assertions:
 - release upload confirmation flow succeeds with local assets
 - metrics endpoint exposes hardening counters
 
+## Evidence policy
+
+- Smoke evidence tagged with `smoke/v<timestamp>-hardening-pass2` is retained as operational proof.
+- Failed intermediate smoke releases may be deleted from GitHub after triage.
+- Local `artifacts/smoke/` history is retained unless explicitly cleaned by operators.
+- Release notes for retained smoke artifacts should be prefixed with `SMOKE-EVIDENCE`.
+
 ## Observability
 
 Structured logging:
@@ -269,6 +282,13 @@ Exposed series include:
 - `omniaudit_tool_latency_seconds{tool}`
 - `omniaudit_write_gate_denied_total{tool}`
 - `omniaudit_rate_limit_denied_total{bucket}`
+
+## Security automation
+
+- `codeql` workflow scans Python sources on push/pull request and scheduled cadence.
+- `security-audit` workflow runs dependency auditing (`pip-audit`) on push/pull request and schedule.
+- `dependabot` updates pip and GitHub Actions dependencies weekly.
+- Security policy and disclosure path are defined in `SECURITY.md` and `docs/SECURITY.md`.
 
 ## Tests
 

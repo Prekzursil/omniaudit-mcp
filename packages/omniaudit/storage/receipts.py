@@ -14,9 +14,21 @@ class ReceiptStore:
     session_factory: type
     object_store: ObjectStore
 
-    def create_receipt(self, operation: str, actor: str, inputs: dict, result: dict) -> Receipt:
+    def create_receipt(
+        self,
+        operation: str,
+        actor: str,
+        inputs: dict,
+        result: dict,
+        request_id: str | None = None,
+    ) -> Receipt:
         inputs_hash = canonical_hash(inputs)
-        result_ref = self.object_store.put_json_immutable(result)
+        payload = {
+            "operation": operation,
+            "request_id": request_id,
+            "result": result,
+        }
+        result_ref = self.object_store.put_json_immutable(payload)
         receipt_id = f"rcpt_{uuid4().hex}"
 
         with self.session_factory() as session:

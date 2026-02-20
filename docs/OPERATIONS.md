@@ -114,6 +114,21 @@ Back up persistent data:
   - call `/healthz` and one MCP tool.
   - confirm spans arrive at collector.
 
+## Smoke cleanup policy
+
+- Keep the latest PASS evidence release/tag/assets for each hardening wave.
+- Failed intermediate smoke releases/tags can be deleted from GitHub after investigation.
+- Do not delete local smoke artifacts under `artifacts/smoke/` unless storage pressure requires it.
+- Preserve `summary.json` and raw MCP responses for retained smoke evidence runs.
+- Mark retained evidence release notes with `SMOKE-EVIDENCE`.
+
+Cleanup example:
+
+```bash
+gh release delete smoke/v<failed-tag>-hardening-pass2 --repo Prekzursil/omniaudit-mcp --yes --cleanup-tag
+gh release list --repo Prekzursil/omniaudit-mcp | head -n 20
+```
+
 ## Metrics scrape example
 
 Prometheus `scrape_configs` entry:
@@ -129,3 +144,13 @@ Prometheus `scrape_configs` entry:
 
 - Rotate `WRITE_CONFIRMATION_SECRET` and restart API.
 - Rotate `ENVELOPE_MASTER_KEY_FILE` using a maintenance script that re-encrypts stored credential values.
+
+## Incident drills
+
+Use these drills before production changes to validate degraded-mode behavior:
+
+- `scripts/drills/drill_github_api_outage.sh`
+- `scripts/drills/drill_s3_unavailability.sh`
+- `scripts/drills/drill_worker_restart_resume.sh`
+
+Each drill writes evidence under `artifacts/drills/<timestamp>/`.

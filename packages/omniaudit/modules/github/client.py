@@ -170,12 +170,23 @@ class GitHubClient:
         )
         return response.json()
 
+    def get_commit_check_summary(self, repo: str, sha: str) -> dict[str, Any]:
+        owner, name = self._split_repo(repo)
+        response = self._request("GET", f"/repos/{owner}/{name}/commits/{sha}/status")
+        payload = response.json()
+        return {
+            "sha": sha,
+            "state": payload.get("state"),
+            "total_count": payload.get("total_count"),
+        }
+
     def upload_release_asset(
         self,
         upload_url: str,
         file_path: str,
         asset_name: str | None = None,
         content_type: str | None = None,
+        timeout_seconds: int | None = None,
     ) -> dict[str, Any]:
         path = Path(file_path)
         name = asset_name or path.name
@@ -193,7 +204,8 @@ class GitHubClient:
             "Content-Type": mime_type,
         }
 
-        with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+        timeout = float(timeout_seconds) if timeout_seconds and timeout_seconds > 0 else 60.0
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
             response = client.post(endpoint, headers=headers, params=params, content=content)
             if response.status_code >= 400:
                 raise GitHubClientError(
