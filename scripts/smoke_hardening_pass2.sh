@@ -7,19 +7,22 @@ SMOKE_REPO="${SMOKE_REPO:-Prekzursil/omniaudit-mcp}"
 SMOKE_URL="${SMOKE_URL:-https://example.com}"
 SMOKE_KEEP_EVIDENCE="${SMOKE_KEEP_EVIDENCE:-true}"
 SMOKE_PREFLIGHT_ONLY="${SMOKE_PREFLIGHT_ONLY:-false}"
-SMOKE_TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
+if command -v date >/dev/null 2>&1; then
+  SMOKE_TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
+else
+  SMOKE_TIMESTAMP="19700101-000000"
+fi
 SMOKE_TAG="smoke/v${SMOKE_TIMESTAMP}-hardening-pass2"
 SMOKE_RELEASE_NAME="Smoke Hardening Pass 2 ${SMOKE_TIMESTAMP} UTC"
 ARTIFACT_ROOT="artifacts/smoke/${SMOKE_TIMESTAMP}"
 RESPONSES_DIR="${ARTIFACT_ROOT}/responses"
 SUMMARY_FILE="${ARTIFACT_ROOT}/summary.json"
+SUMMARY_DIR="${ARTIFACT_ROOT}"
 MOUNTED_ASSET_HOST_PATH="data/smoke/${SMOKE_TIMESTAMP}/sample-asset.txt"
 MOUNTED_ASSET_CONTAINER_PATH="/app/data/smoke/${SMOKE_TIMESTAMP}/sample-asset.txt"
 ENV_FILE=".env"
 ENV_BACKUP="${ARTIFACT_ROOT}/.env.backup"
 HEALTH_URL="${OMNIAUDIT_MCP_URL%/mcp}/healthz"
-
-mkdir -p "${RESPONSES_DIR}"
 
 log() {
   printf '[smoke-pass2] %s\n' "$*"
@@ -53,16 +56,20 @@ write_summary() {
         error: (if $error == "" then null else $error end)
       }' > "${SUMMARY_FILE}"
   else
-    cat > "${SUMMARY_FILE}" <<EOF
-{"timestamp_utc":"${SMOKE_TIMESTAMP}","smoke_tag":"${SMOKE_TAG}","release_url":"${release_url}","legacy_ref_read_ok":${legacy_ok},"s3_ref_write_ok":${s3_ok},"release_upload_ok":${release_ok},"metrics_ok":${metrics_ok},"error":"${error_msg}"}
-EOF
+    local escaped_error
+    escaped_error="${error_msg//\\/\\\\}"
+    escaped_error="${escaped_error//\"/\\\"}"
+    printf '{"timestamp_utc":"%s","smoke_tag":"%s","release_url":"%s","legacy_ref_read_ok":%s,"s3_ref_write_ok":%s,"release_upload_ok":%s,"metrics_ok":%s,"error":"%s"}\n' \
+      "${SMOKE_TIMESTAMP}" "${SMOKE_TAG}" "${release_url}" "${legacy_ok}" "${s3_ok}" "${release_ok}" "${metrics_ok}" "${escaped_error}" > "${SUMMARY_FILE}"
   fi
 }
 
 fail() {
   local code="$1"
   local message="$2"
-  write_summary false false false false "" "${message}"
+  if [[ -d "${SUMMARY_DIR}" ]]; then
+    write_summary false false false false "" "${message}" || true
+  fi
   log "FAIL (${code}): ${message}"
   exit "${code}"
 }
@@ -181,7 +188,12 @@ docker info >/dev/null 2>&1 || fail 10 "Docker daemon unavailable"
 gh repo view "${SMOKE_REPO}" >/dev/null 2>&1 || fail 10 "Smoke repo not found: ${SMOKE_REPO}"
 
 if [[ "${SMOKE_PREFLIGHT_ONLY}" == "true" ]]; then
-  write_summary false false false false "" ""
+  if command -v mkdir >/dev/null 2>&1; then
+    mkdir -p "${RESPONSES_DIR}" || true
+  fi
+  if [[ -d "${SUMMARY_DIR}" ]]; then
+    write_summary false false false false "" ""
+  fi
   log "Preflight-only mode complete."
   exit 0
 fi
@@ -203,6 +215,7 @@ if grep -q '^GITHUB_PAT=$' "${ENV_FILE}"; then
 fi
 append_repo_allowlist "${SMOKE_REPO}"
 
+mkdir -p "${RESPONSES_DIR}"
 mkdir -p "${ARTIFACT_ROOT}"
 mkdir -p "$(dirname "${MOUNTED_ASSET_HOST_PATH}")"
 printf 'smoke artifact generated at %s\n' "${SMOKE_TIMESTAMP}" > "${ARTIFACT_ROOT}/sample-asset.txt"
