@@ -36,6 +36,11 @@ from omniaudit.storage.s3 import S3ObjectStore
 logger = logging.getLogger("omniaudit.runtime")
 
 
+def _sanitize_log_value(value: str) -> str:
+    """Strip CR/LF (and trim) so user-provided values cannot forge log records."""
+    return value.replace("\r", " ").replace("\n", " ")[:200]
+
+
 class MCPToolError(RuntimeError):
     pass
 
@@ -210,12 +215,13 @@ def call_tool(
             else "success"
         )
         record_tool_call(name, status, duration)
+        safe_name = _sanitize_log_value(name)
         logger.info(
             "tool call completed",
             extra={
                 "request_id": rid,
-                "tool": name,
-                "module_name": name.split(".", 1)[0],
+                "tool": safe_name,
+                "module_name": _sanitize_log_value(name.split(".", 1)[0]),
                 "duration_ms": int(duration * 1000),
                 "status": status,
             },
@@ -229,11 +235,13 @@ def call_tool(
             "tool call failed",
             extra={
                 "request_id": rid,
-                "tool": name,
-                "module_name": name.split(".", 1)[0] if "." in name else "unknown",
+                "tool": _sanitize_log_value(name),
+                "module_name": _sanitize_log_value(name.split(".", 1)[0])
+                if "." in name
+                else "unknown",
                 "duration_ms": int(duration * 1000),
                 "status": status,
-                "error": str(exc),
+                "error": _sanitize_log_value(str(exc)),
             },
             exc_info=True,
         )

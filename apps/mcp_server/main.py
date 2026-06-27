@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from omniaudit.core.settings import settings
-from omniaudit.mcp.runtime import MCPToolError, build_runtime, call_tool, list_tools
+from omniaudit.mcp.runtime import build_runtime, call_tool, list_tools
 from omniaudit.observability.logging import configure_logging, request_id_context
 from omniaudit.observability.metrics import render_metrics
 from omniaudit.observability.tracing import init_tracing
+
+logger = logging.getLogger("omniaudit.mcp_server")
 
 configure_logging(settings.log_format)
 app = FastAPI(title=settings.app_name, version="0.1.0")
@@ -139,69 +142,73 @@ def metrics() -> Response:
     return Response(content=body, media_type=content_type)
 
 
+def _jsonrpc_error(req_id: Any, code: int, message: str) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "error": {"code": code, "message": message},
+    }
+
+
 @app.post("/mcp", dependencies=[Depends(_check_api_key)])
 async def mcp_handler(request: Request) -> dict[str, Any]:
     payload = await request.json()
     method = payload.get("method")
     req_id = payload.get("id")
 
-    try:
-        if method == "initialize":
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "protocolVersion": "2025-06-18",
-                    "serverInfo": {
-                        "name": settings.app_name,
-                        "version": "0.1.0",
-                    },
-                    "capabilities": {
-                        "tools": {},
-                    },
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2025-06-18",
+                "serverInfo": {
+                    "name": settings.app_name,
+                    "version": "0.1.0",
                 },
-            }
+                "capabilities": {
+                    "tools": {},
+                },
+            },
+        }
 
-        if method == "tools/list":
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": list_tools(),
-            }
+    if method == "tools/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": list_tools(),
+        }
 
-        if method == "tools/call":
-            params = payload.get("params", {})
-            name = params.get("name")
-            arguments = params.get("arguments", {})
-            if not name:
-                raise MCPToolError("tools/call requires params.name")
+    if method == "tools/call":
+        params = payload.get("params", {})
+        name = params.get("name")
+        arguments = params.get("arguments", {})
+        if not name:
+            return _jsonrpc_error(req_id, -32602, "tools/call requires params.name")
+        try:
             result = call_tool(
                 runtime,
                 name=name,
                 arguments=arguments,
                 request_id=request_id_context.get(),
             )
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": str(result),
-                        }
-                    ],
-                    "structuredContent": result,
-                },
-            }
-
-        raise MCPToolError(f"Unsupported method: {method}")
-    except Exception as exc:
+        except Exception:
+            # Never surface internal exception details (or stack traces) to clients;
+            # log the full context server-side for operators instead.
+            logger.exception("tools/call failed", extra={"request_id": request_id_context.get()})
+            return _jsonrpc_error(req_id, -32000, "Internal server error")
         return {
             "jsonrpc": "2.0",
             "id": req_id,
-            "error": {
-                "code": -32000,
-                "message": str(exc),
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": str(result),
+                    }
+                ],
+                "structuredContent": result,
             },
         }
+
+    return _jsonrpc_error(req_id, -32601, f"Unsupported method: {method}")
