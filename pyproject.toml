@@ -54,7 +54,7 @@ dev = [
 where = ["packages"]
 
 [tool.pytest.ini_options]
-pythonpath = ["packages", "apps", "services"]
+pythonpath = [".", "packages", "apps", "services"]
 testpaths = ["tests"]
 addopts = "-q"
 
