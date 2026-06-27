@@ -27,7 +27,9 @@ def _build_service(tmp_path: Path) -> SiteLintService:
     )
 
 
-def test_start_scan_writes_baseline_diff_and_accepts_wave1_args(monkeypatch, tmp_path: Path) -> None:
+def test_start_scan_writes_baseline_diff_and_accepts_wave1_args(
+    monkeypatch, tmp_path: Path
+) -> None:
     service = _build_service(tmp_path)
     call_count = {"n": 0}
 
@@ -52,7 +54,12 @@ def test_start_scan_writes_baseline_diff_and_accepts_wave1_args(monkeypatch, tmp
             "auth_context_used": bool(auth_context),
             "pages": [{"url": url, "status_code": 200}],
             "findings": [
-                {"finding_id": f"finding_{idx}", "severity": "s3", "category": "general", "title": "x"}
+                {
+                    "finding_id": f"finding_{idx}",
+                    "severity": "s3",
+                    "category": "general",
+                    "title": "x",
+                }
                 for idx in range(finding_count)
             ],
             "artifacts": {"screenshots": [], "lighthouse": None, "axe": None},
@@ -110,7 +117,9 @@ def test_get_report_zip_returns_bundle_ref(monkeypatch, tmp_path: Path) -> None:
         }
 
     monkeypatch.setattr("omniaudit.modules.sitelint.service.run_sitelint_scan", fake_scan)
-    job = service.start_scan(url="https://example.com", profile="standard", viewport_set="desktop_mobile")
+    job = service.start_scan(
+        url="https://example.com", profile="standard", viewport_set="desktop_mobile"
+    )
     zipped = service.get_report(scan_id=job["job_id"], format_name="zip")
 
     assert zipped["format"] == "zip"

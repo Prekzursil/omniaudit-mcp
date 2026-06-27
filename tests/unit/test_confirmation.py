@@ -14,8 +14,11 @@ def test_confirmation_rejects_mismatched_payload() -> None:
     payload = {"repo": "Prekzursil/AdrianaArt", "operation": "auditlens.create_issue"}
     token = svc.issue_token("auditlens.create_issue", payload)
 
-    assert svc.verify_token(
-        "auditlens.create_issue",
-        {"repo": "Prekzursil/env-inspector", "operation": "auditlens.create_issue"},
-        token,
-    ) is False
+    assert (
+        svc.verify_token(
+            "auditlens.create_issue",
+            {"repo": "Prekzursil/env-inspector", "operation": "auditlens.create_issue"},
+            token,
+        )
+        is False
+    )

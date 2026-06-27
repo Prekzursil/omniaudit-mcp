@@ -49,6 +49,9 @@ def test_metrics_counters_increment() -> None:
     record_write_gate_denied("auditlens.create_issue")
     record_rate_limit_denied("scan")
 
-    assert TOOL_CALLS_TOTAL.labels(tool="core.health", status="success")._value.get() == tool_before + 1
+    assert (
+        TOOL_CALLS_TOTAL.labels(tool="core.health", status="success")._value.get()
+        == tool_before + 1
+    )
     assert WRITE_GATE_DENIED.labels(tool="auditlens.create_issue")._value.get() == write_before + 1
     assert RATE_LIMIT_DENIED.labels(bucket="scan")._value.get() == rate_before + 1

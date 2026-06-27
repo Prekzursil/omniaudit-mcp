@@ -59,8 +59,12 @@ class FakeGitHubWave1:
             "upload_url": "https://uploads.example/releases/3/assets{?name,label}",
         }
 
-    def upload_release_asset(self, upload_url: str, file_path: str, asset_name: str, content_type: str | None = None) -> dict:
-        self.uploaded.append({"upload_url": upload_url, "file_path": file_path, "asset_name": asset_name})
+    def upload_release_asset(
+        self, upload_url: str, file_path: str, asset_name: str, content_type: str | None = None
+    ) -> dict:
+        self.uploaded.append(
+            {"upload_url": upload_url, "file_path": file_path, "asset_name": asset_name}
+        )
         return {
             "id": 7,
             "name": asset_name,
