@@ -1,0 +1,87 @@
+name: quality
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv pip install --system -e '.[test,dev,sitelint]'
+
+      # Gate 1: lint + format + sec-lint
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Shellcheck scripts
+        run: shellcheck scripts/*.sh
+
+      - name: Smoke script guard (missing dependencies)
+        run: |
+          tmpbin="$(mktemp -d)"
+          ln -s "$(command -v bash)" "${tmpbin}/bash"
+          set +e
+          PATH="${tmpbin}" SMOKE_PREFLIGHT_ONLY=true ./scripts/smoke_hardening_pass2.sh
+          rc="$?"
+          set -e
+          if [ "${rc}" -ne 10 ]; then
+            echo "Expected smoke script to fail preflight with exit 10, got ${rc}"
+            exit 1
+          fi
+
+      # Gate 2: types
+      - name: Basedpyright
+        run: basedpyright
+
+      # Gate 3: tests + strict 100% line+branch coverage
+      - name: Tests + coverage (100% line+branch)
+        run: |
+          TMPDIR=/tmp TEMP=/tmp TMP=/tmp pytest -q \
+            --cov=packages --cov=apps --cov=services \
+            --cov-branch --cov-report=term-missing --cov-fail-under=100
+
+      # Gate 4: SAST (Semgrep CE / OSS rules)
+      - name: Semgrep SAST
+        run: |
+          uv pip install --system semgrep
+          semgrep scan --config p/python --config p/secrets --error packages apps services
+
+      # Gate 5: secrets
+      - name: Gitleaks (secret scan)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Gate 6: dependency vulnerabilities
+      - name: Install osv-scanner
+        run: |
+          curl -sSfL -o /usr/local/bin/osv-scanner \
+            https://github.com/google/osv-scanner/releases/download/v2.2.3/osv-scanner_linux_amd64
+          chmod +x /usr/local/bin/osv-scanner
+
+      - name: osv-scanner (dependency vulnerabilities)
+        run: osv-scanner scan --lockfile uv.lock

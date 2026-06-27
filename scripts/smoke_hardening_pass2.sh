@@ -7,6 +7,17 @@ SMOKE_REPO="${SMOKE_REPO:-Prekzursil/omniaudit-mcp}"
 SMOKE_URL="${SMOKE_URL:-https://example.com}"
 SMOKE_KEEP_EVIDENCE="${SMOKE_KEEP_EVIDENCE:-true}"
 SMOKE_PREFLIGHT_ONLY="${SMOKE_PREFLIGHT_ONLY:-false}"
+
+# Early dependency guard using only shell builtins so a restricted PATH fails
+# deterministically with exit 10 *before* any external command (date, mkdir, jq)
+# is invoked. This keeps preflight from crashing with 127 under a stripped PATH.
+for _smoke_dep in curl jq docker gh; do
+  if ! command -v "${_smoke_dep}" >/dev/null 2>&1; then
+    printf '[smoke-pass2] FAIL (10): Missing dependency: %s\n' "${_smoke_dep}" >&2
+    exit 10
+  fi
+done
+
 SMOKE_TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
 SMOKE_TAG="smoke/v${SMOKE_TIMESTAMP}-hardening-pass2"
 SMOKE_RELEASE_NAME="Smoke Hardening Pass 2 ${SMOKE_TIMESTAMP} UTC"
@@ -150,6 +161,7 @@ if [[ "${SMOKE_PREFLIGHT_ONLY}" == "true" ]]; then
 fi
 
 cp "${ENV_FILE}" "${ENV_BACKUP}"
+# shellcheck disable=SC2329  # invoked indirectly via the EXIT trap below
 restore_env() {
   if [[ -f "${ENV_BACKUP}" ]]; then
     cp "${ENV_BACKUP}" "${ENV_FILE}"
