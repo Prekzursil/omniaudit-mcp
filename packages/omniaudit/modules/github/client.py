@@ -50,7 +50,9 @@ class GitHubClient:
         owner, name = repo.split("/", 1)
         return owner, name
 
-    def list_workflow_runs(self, repo: str, branch: str | None = None, per_page: int = 20) -> list[dict[str, Any]]:
+    def list_workflow_runs(
+        self, repo: str, branch: str | None = None, per_page: int = 20
+    ) -> list[dict[str, Any]]:
         owner, name = self._split_repo(repo)
         params: dict[str, Any] = {"per_page": per_page}
         if branch:
@@ -58,10 +60,14 @@ class GitHubClient:
         response = self._request("GET", f"/repos/{owner}/{name}/actions/runs", params=params)
         return response.json().get("workflow_runs", [])
 
-    def list_run_artifacts(self, repo: str, run_id: int, per_page: int = 50) -> list[dict[str, Any]]:
+    def list_run_artifacts(
+        self, repo: str, run_id: int, per_page: int = 50
+    ) -> list[dict[str, Any]]:
         owner, name = self._split_repo(repo)
         response = self._request(
-            "GET", f"/repos/{owner}/{name}/actions/runs/{run_id}/artifacts", params={"per_page": per_page}
+            "GET",
+            f"/repos/{owner}/{name}/actions/runs/{run_id}/artifacts",
+            params={"per_page": per_page},
         )
         return response.json().get("artifacts", [])
 
@@ -125,12 +131,16 @@ class GitHubClient:
 
     def list_commits(self, repo: str, per_page: int = 20) -> list[dict[str, Any]]:
         owner, name = self._split_repo(repo)
-        response = self._request("GET", f"/repos/{owner}/{name}/commits", params={"per_page": per_page})
+        response = self._request(
+            "GET", f"/repos/{owner}/{name}/commits", params={"per_page": per_page}
+        )
         return response.json()
 
     def list_releases(self, repo: str, per_page: int = 30) -> list[dict[str, Any]]:
         owner, name = self._split_repo(repo)
-        response = self._request("GET", f"/repos/{owner}/{name}/releases", params={"per_page": per_page})
+        response = self._request(
+            "GET", f"/repos/{owner}/{name}/releases", params={"per_page": per_page}
+        )
         return response.json()
 
     def compare_commits(self, repo: str, base: str, head: str) -> dict[str, Any]:

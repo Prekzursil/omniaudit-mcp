@@ -29,7 +29,11 @@ class ReleaseButlerService:
         }
 
     def list_assets(self, repo: str, tag: str | None = None) -> dict[str, Any]:
-        release = self.github.get_release_by_tag(repo, tag) if tag else self.github.get_latest_release(repo)
+        release = (
+            self.github.get_release_by_tag(repo, tag)
+            if tag
+            else self.github.get_latest_release(repo)
+        )
         return {
             "repo": repo,
             "tag": release.get("tag_name"),
@@ -74,7 +78,9 @@ class ReleaseButlerService:
 
         if resolved_from and resolved_to:
             try:
-                compare_payload = self.github.compare_commits(repo, base=resolved_from, head=resolved_to)
+                compare_payload = self.github.compare_commits(
+                    repo, base=resolved_from, head=resolved_to
+                )
                 compare_commits = compare_payload.get("commits", [])
             except Exception:
                 used_fallback = True
@@ -87,9 +93,13 @@ class ReleaseButlerService:
                 per_page=max(1, min(fallback_window or window or 20, 100)),
             )
 
-        parsed = self._parse_commit_entries(compare_commits, repo=repo, include_pr_links=include_pr_links)
+        parsed = self._parse_commit_entries(
+            compare_commits, repo=repo, include_pr_links=include_pr_links
+        )
         selected_group = (group_by or "type").strip().lower()
-        notes = self._build_notes_markdown(parsed, resolved_from, resolved_to, used_fallback, group_by=selected_group)
+        notes = self._build_notes_markdown(
+            parsed, resolved_from, resolved_to, used_fallback, group_by=selected_group
+        )
 
         return {
             "repo": repo,
@@ -189,7 +199,9 @@ class ReleaseButlerService:
 
         if checksum_source.startswith("asset:"):
             checksum_asset_id = int(checksum_source.split(":", 1)[1])
-            raw = self.github.download_release_asset(repo, checksum_asset_id).decode("utf-8", errors="ignore")
+            raw = self.github.download_release_asset(repo, checksum_asset_id).decode(
+                "utf-8", errors="ignore"
+            )
             first_token = raw.strip().split()[0]
             if _HEX64_RE.match(first_token):
                 return first_token.lower()
@@ -216,12 +228,16 @@ class ReleaseButlerService:
             sha = commit.get("sha", "")[:7]
             message = commit.get("commit", {}).get("message", "").split("\n", 1)[0]
             prefix, scope = _parse_prefix_and_scope(message)
-            author = commit.get("author", {}).get("login") or commit.get("commit", {}).get("author", {}).get("name", "unknown")
+            author = commit.get("author", {}).get("login") or commit.get("commit", {}).get(
+                "author", {}
+            ).get("name", "unknown")
             rendered = message
             if include_pr_links:
                 prs = sorted({int(value) for value in re.findall(r"#(\d+)", message)})
                 if prs:
-                    pr_links = ", ".join(f"[#{pr}](https://github.com/{repo}/pull/{pr})" for pr in prs)
+                    pr_links = ", ".join(
+                        f"[#{pr}](https://github.com/{repo}/pull/{pr})" for pr in prs
+                    )
                     rendered = f"{message} ({pr_links})"
             entries.append(
                 {

@@ -26,5 +26,7 @@ class PolicyEngine:
             if denied and denied.lower() in host:
                 raise PolicyViolation(f"URL host '{host}' is denylisted")
 
-        if self.url_allowlist and not any(allowed.lower() in host for allowed in self.url_allowlist):
+        if self.url_allowlist and not any(
+            allowed.lower() in host for allowed in self.url_allowlist
+        ):
             raise PolicyViolation(f"URL host '{host}' is not in allowlist")

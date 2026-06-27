@@ -24,7 +24,9 @@ class Job(Base):
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     result_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -41,7 +43,9 @@ class Receipt(Base):
     inputs_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     actor: Mapped[str] = mapped_column(String(128), nullable=False)
     result_ref: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 class AuditLog(Base):
@@ -52,17 +56,23 @@ class AuditLog(Base):
     tool_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     inputs_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     output_ref: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 class SecretCredential(Base):
     __tablename__ = "secret_credentials"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    credential_name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    credential_name: Mapped[str] = mapped_column(
+        String(128), nullable=False, unique=True, index=True
+    )
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     encrypted_value: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

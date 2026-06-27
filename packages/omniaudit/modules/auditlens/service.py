@@ -15,7 +15,9 @@ class AuditLensService:
     github: GitHubClient
     object_store: ObjectStore
 
-    def list_runs(self, repo: str, pr_number: int | None = None, branch: str | None = None) -> list[dict[str, Any]]:
+    def list_runs(
+        self, repo: str, pr_number: int | None = None, branch: str | None = None
+    ) -> list[dict[str, Any]]:
         runs = self.github.list_workflow_runs(repo, branch=branch)
         if pr_number is None:
             return runs
@@ -170,10 +172,16 @@ class AuditLensService:
         return findings
 
     @classmethod
-    def _findings_from_files(cls, files: dict[str, str], parser_profile: str) -> list[dict[str, Any]]:
+    def _findings_from_files(
+        cls, files: dict[str, str], parser_profile: str
+    ) -> list[dict[str, Any]]:
         profile = parser_profile.strip().lower()
         deterministic_payload = next(
-            (content for name, content in files.items() if name.endswith("deterministic-findings.json")),
+            (
+                content
+                for name, content in files.items()
+                if name.endswith("deterministic-findings.json")
+            ),
             None,
         )
 
@@ -192,13 +200,15 @@ class AuditLensService:
         return findings
 
     @staticmethod
-    def _dedupe_findings(findings: list[dict[str, Any]], dedupe_strategy: str) -> list[dict[str, Any]]:
+    def _dedupe_findings(
+        findings: list[dict[str, Any]], dedupe_strategy: str
+    ) -> list[dict[str, Any]]:
         strategy = dedupe_strategy.strip().lower()
         output: list[dict[str, Any]] = []
         seen: set[str] = set()
         for finding in findings:
             if strategy == "by_title":
-                key = f"{finding.get('category','general')}::{finding.get('title','')}"
+                key = f"{finding.get('category', 'general')}::{finding.get('title', '')}"
             else:
                 key = str(finding.get("finding_id", ""))
             if key in seen:

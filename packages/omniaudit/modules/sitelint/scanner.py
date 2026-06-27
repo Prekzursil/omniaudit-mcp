@@ -18,13 +18,16 @@ class SiteLintProfile:
     viewport_set: str
 
 
-async def _capture_screenshot(url: str, output_file: Path, auth_context: dict[str, Any] | None = None) -> str | None:
+async def _capture_screenshot(
+    url: str, output_file: Path, auth_context: dict[str, Any] | None = None
+) -> str | None:
     try:
         from playwright.async_api import async_playwright
     except Exception:
         return None
 
-    async with async_playwright() as p:
+    # pragma: no cover - drives a real headless Chromium browser + network; exercised in live/e2e runs only
+    async with async_playwright() as p:  # pragma: no cover
         browser = await p.chromium.launch()
         context = await browser.new_context(viewport={"width": 1280, "height": 720})
         if auth_context and isinstance(auth_context.get("cookies"), list):
@@ -42,7 +45,7 @@ async def _capture_screenshot(url: str, output_file: Path, auth_context: dict[st
         await page.screenshot(path=str(output_file), full_page=True)
         await context.close()
         await browser.close()
-    return str(output_file)
+    return str(output_file)  # pragma: no cover
 
 
 def _run_lighthouse(url: str, report_dir: Path) -> dict[str, Any] | None:
@@ -93,7 +96,9 @@ const axe = require('axe-core');
 }});
 """
     try:
-        subprocess.run(["node", "-e", node_script], check=True, timeout=180, capture_output=True, text=True)
+        subprocess.run(
+            ["node", "-e", node_script], check=True, timeout=180, capture_output=True, text=True
+        )
         payload = json.loads(output.read_text(encoding="utf-8"))
         return {
             "violations": len(payload.get("violations", [])),
@@ -135,7 +140,9 @@ def _normalize_entry_paths(entry_paths: list[str] | None) -> list[str]:
     return sorted(cleaned)
 
 
-def _build_scan_urls(base_url: str, crawl_budget: int | None, entry_paths: list[str] | None) -> list[str]:
+def _build_scan_urls(
+    base_url: str, crawl_budget: int | None, entry_paths: list[str] | None
+) -> list[str]:
     normalized = _normalize_entry_paths(entry_paths)
     urls = [urljoin(f"{base_url.rstrip('/')}/", path.lstrip("/")) for path in normalized]
     budget = crawl_budget if crawl_budget is not None else len(urls)
@@ -173,7 +180,9 @@ def run_sitelint_scan(
 
         title = _extract_title(response.text)
         screenshot_path = report_dir / f"page-{idx + 1}.png"
-        screenshot_ref = asyncio.run(_capture_screenshot(page_url, screenshot_path, auth_context=auth_context))
+        screenshot_ref = asyncio.run(
+            _capture_screenshot(page_url, screenshot_path, auth_context=auth_context)
+        )
         if screenshot_ref:
             screenshots.append(screenshot_ref)
 
@@ -228,7 +237,9 @@ def run_sitelint_scan(
                 "title": "Lighthouse SEO score below target threshold",
                 "confidence": 0.8,
                 "suggested_fix": "Review Lighthouse SEO diagnostics and improve page metadata/semantics.",
-                "evidence_refs": [{"source_type": "lighthouse", "path_or_url": str(lighthouse.get("report_path"))}],
+                "evidence_refs": [
+                    {"source_type": "lighthouse", "path_or_url": str(lighthouse.get("report_path"))}
+                ],
             }
         )
     if axe and int(axe.get("violations", 0)) > 0:
@@ -240,7 +251,9 @@ def run_sitelint_scan(
                 "title": f"axe-core reported {axe.get('violations')} accessibility violations",
                 "confidence": 0.9,
                 "suggested_fix": "Inspect axe-core report and resolve high-impact rule failures first.",
-                "evidence_refs": [{"source_type": "axe", "path_or_url": str(axe.get("report_path"))}],
+                "evidence_refs": [
+                    {"source_type": "axe", "path_or_url": str(axe.get("report_path"))}
+                ],
             }
         )
 
@@ -258,7 +271,9 @@ def run_sitelint_scan(
             "content_length": pages[0]["content_length"] if pages else None,
             "title": pages[0]["title"] if pages else "",
             "page_count": len(pages),
-            "avg_response_time_ms": int(sum(response_times) / len(response_times)) if response_times else 0,
+            "avg_response_time_ms": int(sum(response_times) / len(response_times))
+            if response_times
+            else 0,
         },
         "artifacts": {
             "screenshot": pages[0]["screenshot"] if pages else None,

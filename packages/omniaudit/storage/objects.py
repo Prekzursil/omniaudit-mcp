@@ -31,8 +31,8 @@ class LocalObjectStore(ObjectStore):
             path.write_bytes(content)
         return str(path)
 
-    def read_text(self, path: str) -> str:
-        return self.read_bytes(path).decode("utf-8")
+    def read_text(self, ref: str) -> str:
+        return self.read_bytes(ref).decode("utf-8")
 
-    def read_bytes(self, path: str) -> bytes:
-        return Path(path).read_bytes()
+    def read_bytes(self, ref: str) -> bytes:
+        return Path(ref).read_bytes()

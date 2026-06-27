@@ -38,11 +38,17 @@ class S3ObjectStore(ObjectStore):
                 config=config,
             )
 
-    def put_json_immutable(self, document: dict) -> str:
+    @property
+    def _s3(self) -> Any:
+        if self.client is None:  # pragma: no cover - guaranteed set in __post_init__
+            raise RuntimeError("S3 client is not initialized")
+        return self.client
+
+    def put_json_immutable(self, document: dict[str, Any]) -> str:
         body = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
         digest = hashlib.sha256(body).hexdigest()
         key = self._key(f"{digest}.json")
-        self.client.put_object(
+        self._s3.put_object(
             Bucket=self.bucket,
             Key=key,
             Body=body,
@@ -53,7 +59,7 @@ class S3ObjectStore(ObjectStore):
     def put_bytes_immutable(self, content: bytes, suffix: str = ".bin") -> str:
         digest = hashlib.sha256(content).hexdigest()
         key = self._key(f"{digest}{suffix}")
-        self.client.put_object(
+        self._s3.put_object(
             Bucket=self.bucket,
             Key=key,
             Body=content,
@@ -66,7 +72,7 @@ class S3ObjectStore(ObjectStore):
 
     def read_bytes(self, ref: str) -> bytes:
         bucket, key = self._parse_ref(ref)
-        obj = self.client.get_object(Bucket=bucket, Key=key)
+        obj = self._s3.get_object(Bucket=bucket, Key=key)
         body = obj["Body"].read()
         if isinstance(body, str):
             return body.encode("utf-8")
