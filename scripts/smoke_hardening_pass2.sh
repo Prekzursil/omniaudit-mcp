@@ -161,8 +161,9 @@ if [[ "${SMOKE_PREFLIGHT_ONLY}" == "true" ]]; then
 fi
 
 cp "${ENV_FILE}" "${ENV_BACKUP}"
-# shellcheck disable=SC2329  # invoked indirectly via the EXIT trap below
+# shellcheck disable=SC2329,SC2317  # invoked indirectly via the EXIT trap below
 restore_env() {
+  # shellcheck disable=SC2317  # body runs only via the EXIT trap; reachability analysis can't see that
   if [[ -f "${ENV_BACKUP}" ]]; then
     cp "${ENV_BACKUP}" "${ENV_FILE}"
     docker compose restart api worker >/dev/null 2>&1 || true
