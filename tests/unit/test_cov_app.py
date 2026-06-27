@@ -32,6 +32,23 @@ def test_mcp_requires_name_and_rejects_unknown_method() -> None:
     assert "Unsupported method" in bad_method.json()["error"]["message"]
 
 
+def test_tool_error_returns_generic_message_not_internal_detail() -> None:
+    client = TestClient(app)
+    resp = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "does.not.exist", "arguments": {}},
+        },
+    )
+    error = resp.json()["error"]
+    # Internal exception detail (e.g. "Unknown tool name: ...") must not leak to clients.
+    assert error["message"] == "Internal server error"
+    assert "Unknown tool" not in error["message"]
+
+
 def test_api_key_enforcement(monkeypatch) -> None:
     monkeypatch.setattr(settings, "mcp_auth_mode", "api_key")
 
