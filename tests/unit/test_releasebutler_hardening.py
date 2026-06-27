@@ -64,7 +64,9 @@ class FakeGitHub:
         asset_name: str,
         content_type: str,
     ) -> dict:
-        self.uploaded.append({"upload_url": upload_url, "file_path": file_path, "asset_name": asset_name})
+        self.uploaded.append(
+            {"upload_url": upload_url, "file_path": file_path, "asset_name": asset_name}
+        )
         return {
             "id": 99,
             "name": asset_name,

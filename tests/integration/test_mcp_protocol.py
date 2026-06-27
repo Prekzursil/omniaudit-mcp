@@ -170,9 +170,16 @@ def test_generate_notes_accepts_from_and_to_tags(monkeypatch) -> None:
                 "include_pr_links": include_pr_links,
             }
         )
-        return {"notes": "ok", "range": {"from_tag": from_tag, "to_tag": to_tag, "fallback_used": False}}
+        return {
+            "notes": "ok",
+            "range": {"from_tag": from_tag, "to_tag": to_tag, "fallback_used": False},
+        }
 
-    monkeypatch.setattr(type(__import__("mcp_server.main", fromlist=["runtime"]).runtime.releasebutler), "generate_notes", fake_generate_notes)
+    monkeypatch.setattr(
+        type(__import__("mcp_server.main", fromlist=["runtime"]).runtime.releasebutler),
+        "generate_notes",
+        fake_generate_notes,
+    )
 
     client = TestClient(app)
     response = client.post(
@@ -198,7 +205,9 @@ def test_generate_notes_accepts_from_and_to_tags(monkeypatch) -> None:
     assert captured["to_tag"] == "v2.0.0"
 
 
-def test_create_release_accepts_local_assets_and_returns_metadata(monkeypatch, tmp_path: Path) -> None:
+def test_create_release_accepts_local_assets_and_returns_metadata(
+    monkeypatch, tmp_path: Path
+) -> None:
     captured = {}
 
     def fake_create_release(

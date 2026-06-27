@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from omniaudit.storage.base import ObjectStore
 
@@ -10,7 +11,7 @@ class DualReadObjectStore(ObjectStore):
     primary: ObjectStore
     fallback: ObjectStore
 
-    def put_json_immutable(self, document: dict) -> str:
+    def put_json_immutable(self, document: dict[str, Any]) -> str:
         return self.primary.put_json_immutable(document)
 
     def put_bytes_immutable(self, content: bytes, suffix: str = ".bin") -> str:

@@ -76,9 +76,13 @@ class SiteLintService:
                 auth_context=auth_context,
             )
             if baseline_scan_id:
-                report["baseline_diff"] = self._baseline_diff(current_report=report, baseline_scan_id=baseline_scan_id)
+                report["baseline_diff"] = self._baseline_diff(
+                    current_report=report, baseline_scan_id=baseline_scan_id
+                )
             result_ref = self.object_store.put_json_immutable(report)
-            job = self.jobs.set_job_status(job.job_id, "completed", 1.0, result_ref=result_ref) or job
+            job = (
+                self.jobs.set_job_status(job.job_id, "completed", 1.0, result_ref=result_ref) or job
+            )
 
         return self._job_ref(job)
 
@@ -141,7 +145,9 @@ class SiteLintService:
             "finished_at": job.updated_at.isoformat() if job.status == "completed" else None,
         }
 
-    def _baseline_diff(self, current_report: dict[str, Any], baseline_scan_id: str) -> dict[str, Any]:
+    def _baseline_diff(
+        self, current_report: dict[str, Any], baseline_scan_id: str
+    ) -> dict[str, Any]:
         baseline_job = self.jobs.get_job(baseline_scan_id)
         if not baseline_job or not baseline_job.result_ref:
             return {

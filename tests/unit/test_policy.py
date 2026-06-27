@@ -3,7 +3,9 @@ from omniaudit.core.policy import PolicyEngine, PolicyViolation
 
 
 def test_repo_allowlist_blocks_unapproved_repo() -> None:
-    policy = PolicyEngine(repo_allowlist={"Prekzursil/AdrianaArt"}, url_allowlist=set(), url_denylist=set())
+    policy = PolicyEngine(
+        repo_allowlist={"Prekzursil/AdrianaArt"}, url_allowlist=set(), url_denylist=set()
+    )
 
     with pytest.raises(PolicyViolation):
         policy.require_repo_write_allowed("Prekzursil/RandomRepo")

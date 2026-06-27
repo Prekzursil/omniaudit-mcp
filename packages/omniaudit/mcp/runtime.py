@@ -81,7 +81,11 @@ WRITE_TOOLS = {
 
 def _build_github_client() -> GitHubClient:
     if settings.github_auth_mode == "app":
-        if settings.github_app_id and settings.github_app_installation_id and settings.github_app_private_key:
+        if (
+            settings.github_app_id
+            and settings.github_app_installation_id
+            and settings.github_app_private_key
+        ):
             provider = GitHubAppAuthProvider(
                 app_id=settings.github_app_id,
                 installation_id=settings.github_app_installation_id,
@@ -191,14 +195,20 @@ def _ensure_url_policy(runtime: AppRuntime, args: dict[str, Any]) -> None:
         runtime.policy.require_url_allowed(url)
 
 
-def call_tool(runtime: AppRuntime, name: str, arguments: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
+def call_tool(
+    runtime: AppRuntime, name: str, arguments: dict[str, Any], request_id: str | None = None
+) -> Any:
     rid = request_id or f"req_{uuid4().hex}"
     started = perf_counter()
 
     try:
         result = _call_tool_inner(runtime, rid, name, arguments)
         duration = perf_counter() - started
-        status = "gate_denied" if isinstance(result, dict) and result.get("requires_confirmation") else "success"
+        status = (
+            "gate_denied"
+            if isinstance(result, dict) and result.get("requires_confirmation")
+            else "success"
+        )
         record_tool_call(name, status, duration)
         logger.info(
             "tool call completed",
@@ -230,7 +240,9 @@ def call_tool(runtime: AppRuntime, name: str, arguments: dict[str, Any], request
         raise
 
 
-def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def _call_tool_inner(
+    runtime: AppRuntime, request_id: str, name: str, arguments: dict[str, Any]
+) -> Any:
     args = dict(arguments)
     token = args.pop("confirmation_token", None)
 
@@ -304,7 +316,9 @@ def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments:
             viewport_set=args["viewport_set"],
             auth_profile=args.get("auth_profile"),
             idempotency_key=args.get("idempotency_key"),
-            crawl_budget=int(args["crawl_budget"]) if args.get("crawl_budget") is not None else None,
+            crawl_budget=int(args["crawl_budget"])
+            if args.get("crawl_budget") is not None
+            else None,
             entry_paths=args.get("entry_paths"),
             auth_profile_id=args.get("auth_profile_id"),
             baseline_scan_id=args.get("baseline_scan_id"),
@@ -318,7 +332,9 @@ def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments:
         return result
 
     if name == "sitelint.get_report":
-        result = runtime.sitelint.get_report(scan_id=args["scan_id"], format_name=args.get("format", "json"))
+        result = runtime.sitelint.get_report(
+            scan_id=args["scan_id"], format_name=args.get("format", "json")
+        )
         _log(runtime, request_id, name, arguments, result)
         return result
 
@@ -368,7 +384,9 @@ def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments:
             window=int(args.get("window", 20)),
             from_tag=args.get("from_tag"),
             to_tag=args.get("to_tag"),
-            fallback_window=int(args["fallback_window"]) if args.get("fallback_window") is not None else None,
+            fallback_window=int(args["fallback_window"])
+            if args.get("fallback_window") is not None
+            else None,
             group_by=args.get("group_by"),
             include_pr_links=bool(args.get("include_pr_links", False)),
         )
@@ -455,11 +473,15 @@ def _call_tool_inner(runtime: AppRuntime, request_id: str, name: str, arguments:
     raise MCPToolError(f"Unknown tool name: {name}")
 
 
-def _log(runtime: AppRuntime, request_id: str, tool_name: str, arguments: dict[str, Any], output: Any) -> None:
+def _log(
+    runtime: AppRuntime, request_id: str, tool_name: str, arguments: dict[str, Any], output: Any
+) -> None:
     output_ref = runtime.receipts.object_store.put_json_immutable(
         {
             "tool": tool_name,
             "output": output,
         }
     )
-    runtime.audit_logger.append(request_id=request_id, tool_name=tool_name, inputs=arguments, output_ref=output_ref)
+    runtime.audit_logger.append(
+        request_id=request_id, tool_name=tool_name, inputs=arguments, output_ref=output_ref
+    )

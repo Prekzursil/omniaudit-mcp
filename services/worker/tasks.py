@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from celery import Celery
 from omniaudit.core.settings import settings
@@ -14,8 +15,9 @@ from omniaudit.storage.s3 import S3ObjectStore
 celery_app = Celery("omniaudit_worker", broker=settings.redis_url, backend=settings.redis_url)
 
 
-def dispatch_sitelint_scan(job_id: str, payload: dict) -> None:
-    run_sitelint_scan_task.delay(job_id=job_id, payload=payload)
+def dispatch_sitelint_scan(job_id: str, payload: dict[str, Any]) -> None:
+    # celery's @task decorator is untyped, so .delay is invisible to the type checker
+    run_sitelint_scan_task.delay(job_id=job_id, payload=payload)  # type: ignore[attr-defined]
 
 
 def _build_object_store():
@@ -39,7 +41,7 @@ def _build_object_store():
 
 
 @celery_app.task(name="omniaudit.sitelint.run_scan")
-def run_sitelint_scan_task(job_id: str, payload: dict) -> dict:
+def run_sitelint_scan_task(job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     engine = create_db_engine(settings.database_url)
     session_factory = create_session_factory(engine)
     jobs = JobStore(session_factory)

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
 
 from omniaudit.models.db import SecretCredential
 from omniaudit.security.envelope import EnvelopeEncryption
@@ -12,7 +13,7 @@ from omniaudit.security.envelope import EnvelopeEncryption
 
 @dataclass(slots=True)
 class SecretCredentialStore:
-    session_factory: type
+    session_factory: sessionmaker[Session]
     envelope: EnvelopeEncryption
 
     def get_auth_profile(self, credential_name: str) -> dict[str, Any] | None:

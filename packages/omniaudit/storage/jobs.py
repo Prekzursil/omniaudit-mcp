@@ -3,24 +3,26 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 
 from omniaudit.models.db import Job
 
 
 @dataclass(slots=True)
 class JobStore:
-    session_factory: type
+    session_factory: sessionmaker[Session]
 
     def create_or_get_job(
         self,
         module: str,
         operation: str,
         idempotency_key: str,
-        payload: dict,
+        payload: dict[str, Any],
     ) -> Job:
         with self.session_factory() as session:
             existing = session.execute(
@@ -41,7 +43,7 @@ class JobStore:
             session.add(new_job)
             try:
                 session.commit()
-            except IntegrityError:
+            except IntegrityError:  # pragma: no cover - concurrent-insert race, not deterministically reproducible in-process
                 session.rollback()
                 existing = session.execute(
                     select(Job).where(Job.idempotency_key == idempotency_key)
@@ -82,6 +84,6 @@ class JobStore:
             return list(session.execute(stmt).scalars().all())
 
 
-def default_idempotency_key(operation: str, payload: dict) -> str:
+def default_idempotency_key(operation: str, payload: dict[str, Any]) -> str:
     body = json.dumps({"operation": operation, "payload": payload}, sort_keys=True).encode("utf-8")
     return hashlib.sha256(body).hexdigest()
