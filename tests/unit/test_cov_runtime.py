@@ -61,6 +61,13 @@ def test_list_tools_has_tools() -> None:
     assert list_tools()["tools"]
 
 
+def test_sanitize_log_value_strips_newlines_and_truncates() -> None:
+    from omniaudit.mcp.runtime import _sanitize_log_value
+
+    assert _sanitize_log_value("a\r\nb") == "a  b"
+    assert len(_sanitize_log_value("x" * 500)) == 200
+
+
 def test_call_tool_unknown_raises_and_logs(session_factory, local_store) -> None:
     rt = _make_runtime(session_factory, local_store)
     with pytest.raises(MCPToolError, match="Unknown tool name"):
