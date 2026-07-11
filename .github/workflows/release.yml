@@ -6,6 +6,12 @@ on:
       - "v*"
       - "smoke/**"
 
+# Least-privilege GITHUB_TOKEN: this validation workflow only checks out the
+# repository and runs tests. It creates no releases, tags, or packages, so
+# read-only access to repository contents is all any step needs.
+permissions:
+  contents: read
+
 jobs:
   release:
     runs-on: ubuntu-latest
