@@ -58,6 +58,14 @@ pythonpath = [".", "packages", "apps", "services"]
 testpaths = ["tests"]
 addopts = "-q"
 
+[tool.coverage.run]
+# the shipped code; the lean gate runs pytest --cov --cov-branch --cov-fail-under=100
+source = ["packages", "apps", "services"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
