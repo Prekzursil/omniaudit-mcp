@@ -1,0 +1,119 @@
+# Checks the repository's former in-repo quality gate ran that the QZP lean
+# gate (quality.yml) does not: shell-script linting and the smoke-script
+# preflight guard, the Semgrep registry packs (the lean gate's SAST runs
+# opengrep with the curated .quality/opengrep rules), and a secret scan over
+# the full history (the lean gate's gitleaks scans the shallow checkout).
+name: extended scans
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  # a merge queue's synthetic commit must report the required check too
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extended-scans-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  scripts:
+    name: scripts (shellcheck + smoke preflight guard)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Ensure shellcheck
+        run: command -v shellcheck || { sudo apt-get update && sudo apt-get install -y shellcheck; }
+
+      - name: Shellcheck scripts
+        run: shellcheck scripts/*.sh
+
+      - name: Smoke script guard (missing dependencies)
+        run: |
+          tmpbin="$(mktemp -d)"
+          ln -s "$(command -v bash)" "${tmpbin}/bash"
+          set +e
+          PATH="${tmpbin}" SMOKE_PREFLIGHT_ONLY=true ./scripts/smoke_hardening_pass2.sh
+          rc="$?"
+          set -e
+          if [ "${rc}" -ne 10 ]; then
+            echo "Expected smoke script to fail preflight with exit 10, got ${rc}"
+            exit 1
+          fi
+
+  semgrep-registry:
+    name: SAST (Semgrep registry rules)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # semgrep gets a venv of its own so its pinned dependencies never mix
+      # with the project's.
+      - name: Install semgrep in an isolated venv
+        run: |
+          python -m venv /tmp/semgrep-venv
+          /tmp/semgrep-venv/bin/pip install --quiet "semgrep==1.182.1"
+
+      - name: semgrep (p/python + p/secrets)
+        env:
+          SEMGREP_SEND_METRICS: "off"
+        run: /tmp/semgrep-venv/bin/semgrep scan --config p/python --config p/secrets --error --metrics off packages apps services
+
+  gitleaks-history:
+    name: secrets (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks 8.30.1 (checksum-verified)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o /tmp/gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+
+      - name: gitleaks over every commit
+        run: gitleaks git . --no-banner --redact --verbose
+
+  # One fail-closed context for branch protection: green only when every
+  # extended scan above succeeded (a skipped or cancelled scan fails it).
+  extended-scans:
+    name: extended-scans
+    if: always()
+    needs: [scripts, semgrep-registry, gitleaks-history]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every extended scan passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for r in $RESULTS; do
+            [ "$r" = success ] || { echo "an extended scan ended with '$r' (all: $RESULTS)"; exit 1; }
+          done
+          echo "all extended scans passed: $RESULTS"

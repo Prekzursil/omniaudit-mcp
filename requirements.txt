@@ -1,0 +1,5 @@
+# What the QZP lean gate (quality.yml) installs before the type check and the
+# tests: this project with its `sitelint` extra, because basedpyright resolves
+# the lazy `playwright` import in omniaudit/modules/sitelint/scanner.py.
+# Exact versions live in uv.lock, which osv-scanner (gate 6) scans.
+.[sitelint]
