@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Canonical local verification.
+# Canonical local verification for Prekzursil/omniaudit-mcp.
 #
 # Runs every lane of the QZP lean gate with quality-zero-platform's preflight
 # at the EXACT commit that .github/workflows/quality.yml pins, so a local pass
