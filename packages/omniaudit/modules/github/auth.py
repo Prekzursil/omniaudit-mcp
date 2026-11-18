@@ -11,7 +11,7 @@ import jwt
 class GitHubAuthProvider(Protocol):
     def authorization_header(self) -> str:
         """Return the value for an HTTP Authorization header."""
-        raise NotImplementedError  # Protocol method: the concrete store/auth provider implements this
+        raise NotImplementedError  # pragma: no cover - Protocol method: the concrete store/auth provider implements this
 
 
 @dataclass(slots=True)
