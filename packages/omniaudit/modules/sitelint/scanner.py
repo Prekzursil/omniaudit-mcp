@@ -33,14 +33,18 @@ async def _capture_screenshot(
         if auth_context and isinstance(auth_context.get("cookies"), list):
             try:
                 await context.add_cookies(auth_context["cookies"])
-            except Exception:
-                pass
+            except Exception as exc:
+                # Malformed caller-supplied cookies must not kill the whole
+                # screenshot run; the page is still reachable unauthenticated.
+                print(f"sitelint: ignoring invalid auth cookies: {exc}")
         page = await context.new_page()
         if auth_context and isinstance(auth_context.get("headers"), dict):
             try:
                 await page.set_extra_http_headers(auth_context["headers"])
-            except Exception:
-                pass
+            except Exception as exc:
+                # Malformed caller-supplied headers must not kill the whole
+                # screenshot run; the page is still reachable without them.
+                print(f"sitelint: ignoring invalid auth headers: {exc}")
         await page.goto(url, wait_until="networkidle", timeout=45000)
         await page.screenshot(path=str(output_file), full_page=True)
         await context.close()
