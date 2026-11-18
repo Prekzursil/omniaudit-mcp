@@ -9,7 +9,8 @@ import jwt
 
 
 class GitHubAuthProvider(Protocol):
-    def authorization_header(self) -> str: ...
+    def authorization_header(self) -> str:
+        """Return the value for an HTTP Authorization header."""
 
 
 @dataclass(slots=True)
