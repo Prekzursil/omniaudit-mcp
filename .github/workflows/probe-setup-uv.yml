@@ -1,0 +1,40 @@
+name: probe-setup-uv-v10.3.3
+
+# TEMPORARY verification-only workflow for Dependabot PR #17. It will NOT be
+# merged: the branch is closed after the run. release.yml (tag push) and
+# smoke-harding-pass2.yml (workflow_dispatch with a live compose stack) are not
+# exercised by pull-request checks, so this probe repeats the setup-uv step and
+# the dependency install + release tests of release.yml with the v10.3.3 pin.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Install dependencies
+        run: uv pip install --system -e '.[test]'
+
+      - name: Report uv
+        run: uv --version
+
+      - name: Validate release-related tests
+        run: |
+          TMPDIR=/tmp TEMP=/tmp TMP=/tmp pytest -q -s \
+            tests/unit/test_releasebutler_hardening.py \
+            tests/unit/test_releasebutler_wave1.py
